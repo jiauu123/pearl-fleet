@@ -6,6 +6,8 @@
 fleet.env
 fleet.override.env
 target-*.env
+!config/fleet.env
+!config/targets/.gitkeep
 runpod_config.json
 runpod_state.json
 logs/
