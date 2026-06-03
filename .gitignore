@@ -1,0 +1,15 @@
+.env
+*.local
+*.local.*
+*.private
+*.private.*
+fleet.env
+fleet.override.env
+target-*.env
+runpod_config.json
+runpod_state.json
+logs/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.log

@@ -1,0 +1,48 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        busybox-static \
+        ca-certificates \
+        curl \
+        gzip \
+        iproute2 \
+        less \
+        libatomic1 \
+        libcurl4 \
+        libgcc-s1 \
+        libgomp1 \
+        libnuma1 \
+        libssl3 \
+        libstdc++6 \
+        nano \
+        openssh-server \
+        pciutils \
+        procps \
+        psmisc \
+        python3 \
+        tar \
+        tini \
+        ttyd \
+        unzip \
+        wget \
+        xz-utils \
+        zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY pearl_fleet_runner.py /usr/local/bin/pearl_fleet_runner.py
+COPY fleet_entrypoint.sh /usr/local/bin/fleet_entrypoint.sh
+COPY miners.json /app/miners.json
+COPY platforms.json /app/platforms.json
+RUN chmod 0755 /usr/local/bin/pearl_fleet_runner.py /usr/local/bin/fleet_entrypoint.sh
+
+ENV PEARL_BOOTSTRAP_URL="https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/config/bootstrap.env" \
+    NVIDIA_VISIBLE_DEVICES="all" \
+    NVIDIA_DRIVER_CAPABILITIES="compute,utility"
+
+EXPOSE 22 8888
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/fleet_entrypoint.sh"]

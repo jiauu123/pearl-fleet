@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "profiles": {
+    "pearlpool": {
+      "url": "https://pearlhash.xyz/downloads/pearl-miner-v11",
+      "archive": "file",
+      "binary": "pearl-miner",
+      "env": {
+        "PEARLHASH_POOL_HOST": "84.32.220.219:9000"
+      },
+      "args": [
+        "--host", "${PEARLHASH_POOL_HOST}",
+        "--user", "${MINER_WALLET}",
+        "--worker", "${WORKER_NAME}"
+      ],
+      "watchdog": {
+        "mode": "log",
+        "warmup_seconds": 180,
+        "stale_seconds": 240,
+        "hashrate_regexes": [
+          {
+            "regex": "Hashrate\\s+Total\\s*=\\s*([0-9]+(?:[.][0-9]+)?)\\s*([KMGT]?H/s)",
+            "value_group": 1,
+            "unit_group": 2
+          }
+        ],
+        "error_regex": "cuda error|connection refused|failed|panic|segmentation fault"
+      }
+    },
+    "tw-pool": {
+      "url": "https://github.com/egg5233/tw-pearl-miner/releases/download/v1.4.0/tw-pearl-miner-linux.tar.gz",
+      "archive": "tar.gz",
+      "binary": "pearl-gpu-miner",
+      "args": [
+        "--wallet", "${MINER_WALLET}",
+        "--worker", "${WORKER_NAME}"
+      ],
+      "watchdog": {
+        "mode": "log",
+        "warmup_seconds": 90,
+        "stale_seconds": 240,
+        "hashrate_regexes": [
+          {
+            "regex": "([0-9]+(?:[.][0-9]+)?)\\s*([KMGT]?H/s)\\s+avg",
+            "value_group": 1,
+            "unit_group": 2
+          }
+        ],
+        "accepted_count_regex": "shares:\\s*([0-9]+)\\s+accepted",
+        "error_regex": "cuda error|connection refused|failed|panic|segmentation fault"
+      }
+    },
+    "tw-pool-cuda12": {
+      "url": "https://github.com/egg5233/tw-pearl-miner/releases/download/v1.4.0/tw-pearl-miner-1.4.0-cuda12.tar.gz",
+      "archive": "tar.gz",
+      "binary": "pearl-gpu-miner",
+      "args": [
+        "--wallet", "${MINER_WALLET}",
+        "--worker", "${WORKER_NAME}"
+      ],
+      "watchdog": {
+        "mode": "log",
+        "warmup_seconds": 90,
+        "stale_seconds": 240,
+        "hashrate_regexes": [
+          {
+            "regex": "([0-9]+(?:[.][0-9]+)?)\\s*([KMGT]?H/s)\\s+avg",
+            "value_group": 1,
+            "unit_group": 2
+          }
+        ],
+        "accepted_count_regex": "shares:\\s*([0-9]+)\\s+accepted",
+        "error_regex": "cuda error|connection refused|failed|panic|segmentation fault"
+      }
+    },
+    "luckypool": {
+      "url": "https://pearl.luckypool.io/lpminer/lpminer-0.1.9.tar.gz",
+      "archive": "tar.gz",
+      "binary": "lpminer",
+      "env": {
+        "MINER_POOL_URL": "stratum+tcp://pearl-eu2.luckypool.io:3360"
+      },
+      "args": [
+        "--algo", "pearl",
+        "--pool", "${MINER_POOL_URL}",
+        "--wallet", "${MINER_WALLET}"
+      ],
+      "watchdog": {
+        "mode": "log",
+        "warmup_seconds": 90,
+        "stale_seconds": 240,
+        "hashrate_regexes": [
+          {
+            "regex": "^\\s*(?:GPU\\s+#\\d+|10s|60s|15m)\\b.*?([0-9]+(?:[.][0-9]+)?)\\s*([KMGT]?H/s)",
+            "value_group": 1,
+            "unit_group": 2
+          }
+        ],
+        "accepted_regex": "share accepted",
+        "rejected_regex": "share rejected|rejected",
+        "error_regex": "connection refused|failed|panic|segmentation fault"
+      }
+    },
+    "alphapool": {
+      "url": "https://github.com/AlphaMine-Tech/alpha-miner/releases/latest/download/alpha-miner",
+      "archive": "file",
+      "binary": "alpha-miner",
+      "env": {
+        "MINER_POOL_URL": "stratum+tcp://us2.alphapool.tech:5566",
+        "ALPHA_DIFFICULTY": "65536",
+        "ALPHA_PASSWORD": "x;d=${ALPHA_DIFFICULTY}"
+      },
+      "args": [
+        "--pool", "${MINER_POOL_URL}",
+        "--address", "${MINER_WALLET}",
+        "--worker", "${WORKER_NAME}",
+        "--password", "${ALPHA_PASSWORD}"
+      ],
+      "watchdog": {
+        "mode": "log",
+        "warmup_seconds": 90,
+        "stale_seconds": 240,
+        "hashrate_regexes": [
+          {
+            "regex": "hashrate_th_s=([0-9]+(?:[.][0-9]+)?)",
+            "value_group": 1,
+            "unit": "TH/s"
+          }
+        ],
+        "accepted_regex": "component=share\\s+submitted",
+        "rejected_regex": "component=share\\s+rejected|rejected",
+        "error_regex": "cuda error|connection refused|failed|panic|segmentation fault"
+      }
+    },
+    "srbminer": {
+      "url": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.2/SRBMiner-Multi-3-3-2-Linux.tar.gz",
+      "archive": "tar.gz",
+      "binary": "SRBMiner-MULTI",
+      "env": {
+        "MINER_POOL_URL": "pearl-eu2.luckypool.io:3360",
+        "SRB_API_PORT": "21550"
+      },
+      "args": [
+        "--algorithm", "pearlhash",
+        "--pool", "${MINER_POOL_URL}",
+        "--wallet", "${MINER_WALLET}",
+        "--worker", "${WORKER_NAME}",
+        "--disable-cpu",
+        "--api-enable",
+        "--api-port", "${SRB_API_PORT}"
+      ],
+      "watchdog": {
+        "mode": "log",
+        "warmup_seconds": 90,
+        "stale_seconds": 240,
+        "hashrate_regexes": [
+          {
+            "regex": "Total:\\s*([0-9]+(?:[.][0-9]+)?)\\s*([KMGT]?H/s)",
+            "value_group": 1,
+            "unit_group": 2
+          }
+        ],
+        "accepted_regex": "share accepted",
+        "rejected_regex": "share rejected|rejected",
+        "error_regex": "PARSE error|connection refused|failed|panic|segmentation fault"
+      }
+    },
+    "srbminer-herominers": {
+      "url": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.2/SRBMiner-Multi-3-3-2-Linux.tar.gz",
+      "archive": "tar.gz",
+      "binary": "SRBMiner-MULTI",
+      "env": {
+        "MINER_POOL_URL": "de.pearl.herominers.com:1200",
+        "SRB_API_PORT": "21550"
+      },
+      "args": [
+        "--algorithm", "pearlhash",
+        "--pool", "${MINER_POOL_URL}",
+        "--wallet", "${MINER_WALLET}.${WORKER_NAME}",
+        "--disable-cpu",
+        "--api-enable",
+        "--api-port", "${SRB_API_PORT}"
+      ],
+      "watchdog": {
+        "mode": "log",
+        "warmup_seconds": 90,
+        "stale_seconds": 240,
+        "hashrate_regexes": [
+          {
+            "regex": "Total:\\s*([0-9]+(?:[.][0-9]+)?)\\s*([KMGT]?H/s)",
+            "value_group": 1,
+            "unit_group": 2
+          }
+        ],
+        "accepted_regex": "share accepted",
+        "rejected_regex": "share rejected|rejected",
+        "error_regex": "PARSE error|connection refused|failed|panic|segmentation fault"
+      }
+    },
+    "pearlfortune": {
+      "url": "https://github.com/pearlfortune/pearl-miner/releases/latest/download/miner-linux-amd64-v1.0.7.tar.gz",
+      "archive": "tar.gz",
+      "binary": "miner",
+      "env": {
+        "PEARLFORTUNE_PROXY": "jp.pearlfortune.org:443"
+      },
+      "args": [
+        "--proxy", "${PEARLFORTUNE_PROXY}",
+        "--address", "${MINER_WALLET}",
+        "--worker", "${WORKER_NAME}",
+        "-gpu"
+      ],
+      "watchdog": {
+        "mode": "process",
+        "error_regex": "connection refused|failed|panic|segmentation fault"
+      }
+    }
+  }
+}
