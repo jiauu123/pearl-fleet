@@ -359,6 +359,9 @@ def normalize_profile(profile):
 
 
 def render_template(value, vars_map, required=True):
+    if not isinstance(value, str):
+        return value
+
     def replace(match):
         key = match.group(1)
         default = match.group(3)
@@ -370,7 +373,7 @@ def render_template(value, vars_map, required=True):
             raise KeyError(key)
         return ""
 
-    return TOKEN_RE.sub(replace, str(value))
+    return TOKEN_RE.sub(replace, value)
 
 
 def render_list(values, vars_map):
