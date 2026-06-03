@@ -146,6 +146,8 @@
         "--wallet", "${MINER_WALLET}",
         "--worker", "${WORKER_NAME}",
         "--disable-cpu",
+        "--extended-log",
+        "--log-file", "/proc/self/fd/1",
         "--api-enable",
         "--api-port", "${SRB_API_PORT}"
       ],
@@ -178,6 +180,8 @@
         "--pool", "${MINER_POOL_URL}",
         "--wallet", "${MINER_WALLET}.${WORKER_NAME}",
         "--disable-cpu",
+        "--extended-log",
+        "--log-file", "/proc/self/fd/1",
         "--api-enable",
         "--api-port", "${SRB_API_PORT}"
       ],
