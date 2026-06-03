@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import ast
 import glob
 import hashlib
 import json
@@ -77,7 +78,7 @@ def merge(base, incoming):
     out = dict(base)
     for key, value in incoming.items():
         if value is not None:
-            out[str(key)] = str(value)
+            out[str(key)] = value
     return out
 
 
@@ -776,8 +777,18 @@ def regex_rule_items(primary, fallback=None):
     raw = primary if primary not in (None, "", []) else fallback
     if raw in (None, "", []):
         return []
+    if isinstance(raw, str) and raw.strip()[:1] in {"[", "{"}:
+        text = raw.strip()
+        for parser in (json.loads, ast.literal_eval):
+            try:
+                parsed = parser(text)
+            except Exception:
+                continue
+            return regex_rule_items(parsed, fallback)
     if isinstance(raw, list):
         return raw
+    if isinstance(raw, dict):
+        return [raw]
     return [raw]
 
 
