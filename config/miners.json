@@ -133,7 +133,7 @@
       }
     },
     "srbminer": {
-      "url": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.2/SRBMiner-Multi-3-3-2-Linux.tar.gz",
+      "url": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.3/SRBMiner-Multi-3-3-3-Linux.tar.gz",
       "archive": "tar.gz",
       "binary": "SRBMiner-MULTI",
       "env": {
@@ -167,7 +167,7 @@
       }
     },
     "srbminer-herominers": {
-      "url": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.2/SRBMiner-Multi-3-3-2-Linux.tar.gz",
+      "url": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.3/SRBMiner-Multi-3-3-3-Linux.tar.gz",
       "archive": "tar.gz",
       "binary": "SRBMiner-MULTI",
       "env": {

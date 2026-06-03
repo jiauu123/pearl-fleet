@@ -197,7 +197,7 @@ your-domain.example {
 
   handle {
     root * /pearl-fleet
-    header Cache-Control "no-store"
+    header Cache-Control "no-cache"
     file_server
   }
 }
@@ -236,6 +236,171 @@ CONFIG_SYNC_ENABLED=1
 CONFIG_POLL_SECONDS=300
 CONFIG_POLL_JITTER_SECONDS=30
 ```
+
+Config sync runs in a background thread after the miner starts. It does not
+block miner stdout parsing, heartbeat, or watchdog checks. The runner uses
+`If-None-Match` and `If-Modified-Since` when a server provides `ETag` or
+`Last-Modified`. If a server does not support conditional requests, the runner
+falls back to local content hashing and only restarts the miner when the final
+config fingerprint changes.
+
+Optional hash sidecar files can avoid full downloads on simple static VPS
+hosting:
+
+```bash
+cd /pearl-fleet
+sha256sum bootstrap.env | awk '{print $1}' > bootstrap.env.sha256
+sha256sum fleet.env | awk '{print $1}' > fleet.env.sha256
+sha256sum miners.json | awk '{print $1}' > miners.json.sha256
+sha256sum platforms.json | awk '{print $1}' > platforms.json.sha256
+```
+
+Then enable sidecar checks:
+
+```env
+CONFIG_HASH_CHECK_ENABLED=1
+CONFIG_HASH_URL_SUFFIX=.sha256
+```
+
+## Environment Variables
+
+### Required Mining Settings
+
+| Variable | Default | Use |
+| --- | --- | --- |
+| `MINER_WALLET` | empty | Required wallet address. Public config intentionally does not set it. |
+| `MINER_USER` | empty | Legacy alias for `MINER_WALLET`. |
+| `MINER_PROFILE` | `pearlpool` | Miner/pool profile. Supported values are listed below. |
+| `WORKER_PREFIX` | `auto` | Worker name prefix. `auto` lets platform rules choose a prefix. |
+
+### Pool And Miner Overrides
+
+| Variable | Applies To | Use |
+| --- | --- | --- |
+| `PEARLHASH_POOL_HOST` | `pearlpool` | Host and port for pearlpool style miner, for example `84.32.220.219:9000`. |
+| `MINER_POOL_URL` | `luckypool`, `alphapool`, `srbminer`, `srbminer-herominers` | Pool URL or host:port. Luckypool/Alphapool use `stratum+tcp://...`; SRBMiner profiles use plain `host:port`. |
+| `SRB_API_PORT` | SRBMiner profiles | Local SRBMiner API port. |
+| `ALPHA_DIFFICULTY` | `alphapool` | Static difficulty value used to render `ALPHA_PASSWORD`. |
+| `ALPHA_PASSWORD` | `alphapool` | Pool password, default renders as `x;d=${ALPHA_DIFFICULTY}`. |
+| `PEARLFORTUNE_PROXY` | `pearlfortune` | Pearlfortune proxy endpoint, for example `jp.pearlfortune.org:443`. |
+
+Examples:
+
+```env
+# Pearlpool Asia node
+MINER_PROFILE=pearlpool
+PEARLHASH_POOL_HOST=84.32.220.219:9000
+
+# SRBMiner on Luckypool
+MINER_PROFILE=srbminer
+MINER_POOL_URL=pearl-eu2.luckypool.io:3360
+
+# SRBMiner on Herominers Asia
+MINER_PROFILE=srbminer-herominers
+MINER_POOL_URL=kr.pearl.herominers.com:1200
+```
+
+Useful Herominers endpoints:
+
+```text
+de.pearl.herominers.com:1200
+fr.pearl.herominers.com:1200
+es.pearl.herominers.com:1200
+fi.pearl.herominers.com:1200
+ru.pearl.herominers.com:1200
+ca.pearl.herominers.com:1200
+us.pearl.herominers.com:1200
+us2.pearl.herominers.com:1200
+us3.pearl.herominers.com:1200
+br.pearl.herominers.com:1200
+hk.pearl.herominers.com:1200
+kr.pearl.herominers.com:1200
+sg.pearl.herominers.com:1200
+tr.pearl.herominers.com:1200
+au.pearl.herominers.com:1200
+```
+
+### Remote Config
+
+| Variable | Default | Use |
+| --- | --- | --- |
+| `PEARL_BOOTSTRAP_URL` | GitHub Raw public bootstrap | First remote env file. Override it to use your VPS/domain. |
+| `PEARL_CONFIG_URL` | from bootstrap | Global fleet env URL. |
+| `MINER_CONFIG_URL` | empty | Legacy alias for `PEARL_CONFIG_URL`. |
+| `MINER_REGISTRY_URL` | from bootstrap | Remote `miners.json`. |
+| `PLATFORM_REGISTRY_URL` | empty | Remote `platforms.json`. |
+| `FLEET_TARGETS_BASE_URL` | empty | Base URL for per-worker files such as `targets/<worker>.env`. |
+| `FLEET_TARGET_CONFIG_URL` | empty | Exact per-worker override URL template. Supports variables like `${WORKER_NAME}`. |
+| `DISABLE_REMOTE_CONFIG` | `0` | Set `1` to use only local files and platform env. |
+
+### Sync And HTTP Cache
+
+| Variable | Default | Use |
+| --- | --- | --- |
+| `CONFIG_SYNC_ENABLED` | `1` | Background config sync after miner start. |
+| `CONFIG_POLL_SECONDS` | `300` | Base sync interval. |
+| `CONFIG_POLL_JITTER_SECONDS` | `30` | Random jitter range. Current behavior is `base +/- jitter`. |
+| `CONFIG_HTTP_TIMEOUT_SECONDS` | `20` | Timeout for each remote config request. |
+| `CONFIG_HTTP_CONDITIONAL_REQUESTS` | `1` | Use `If-None-Match` / `If-Modified-Since` when cached headers exist. |
+| `CONFIG_HASH_CHECK_ENABLED` | `0` | Check optional hash sidecar URL before downloading full files. |
+| `CONFIG_HASH_URL_SUFFIX` | `.sha256` | Suffix appended to config URLs for hash sidecars. |
+| `CONFIG_HTTP_CACHE_BUST` | `0` | Add `_pearl_min` cache-busting query. Usually leave disabled when conditional requests are enabled. |
+
+### Local Files And Cache
+
+| Variable | Default | Use |
+| --- | --- | --- |
+| `FLEET_LOCAL_ENV_FILES` | `/workspace/fleet.env /runpod-volume/fleet.env /app/fleet.env` | Local env files loaded after remote global config. |
+| `FLEET_OVERRIDE_FILES` | `/workspace/fleet.override.env /runpod-volume/fleet.override.env /app/fleet.override.env` | Highest-priority local overrides. |
+| `FLEET_LOCAL_REGISTRY_FILES` | `/workspace/miners.json /runpod-volume/miners.json /app/miners.json` | Local fallback miner registries. |
+| `FLEET_LOCAL_PLATFORM_FILES` | `/workspace/platforms.json /runpod-volume/platforms.json /app/platforms.json` | Local fallback platform registries. |
+| `FLEET_STATE_DIR` | `/app/state` | Cache and state directory. Use `/workspace/...` for persistence. |
+| `MINER_CACHE_DIR` | `/app/miners` | Downloaded miner cache directory. Use `/workspace/...` for persistence. |
+| `ALWAYS_DOWNLOAD_MINER` | `0` | Set `1` to force re-download miner binaries. |
+| `MINER_DRY_RUN` | `0` | Set `1` to render config and exit without starting a miner. |
+
+### Watchdog
+
+| Variable | Default | Use |
+| --- | --- | --- |
+| `WATCHDOG_ENABLED` | `1` | Enable restart logic. |
+| `WATCHDOG_STARTUP_GRACE` | `180` | Default warmup if a profile does not override it. |
+| `WATCHDOG_STALE_SECONDS` | `300` | Default stale log window if a profile does not override it. |
+| `WATCHDOG_RESTART_DELAY` | `10` | Delay between restart attempts. |
+| `WATCHDOG_MAX_RESTARTS` | `0` | `0` means unlimited restarts. |
+
+Profile-level watchdog values in `miners.json` override these defaults. Current
+SRBMiner profiles use `warmup_seconds=90` and `stale_seconds=240`; accepted
+shares, rejected shares, or hashrate lines all count as activity.
+
+### Access And Heartbeat
+
+| Variable | Default | Use |
+| --- | --- | --- |
+| `FLEET_ACCESS_PASSWORD` | empty | Shared password for SSH and ttyd if more specific variables are empty. |
+| `RUNPOD_ACCESS_PASSWORD` | empty | RunPod-friendly alias for access password. |
+| `SSH_PASSWORD` | empty | SSH-only password fallback. |
+| `SSH_ENABLED` | `1` | Start sshd on port 22. |
+| `WEB_TERMINAL_ENABLED` | `1` | Start ttyd on port 8888 when a password is available. |
+| `WEB_TERMINAL_USER` | `admin` | ttyd username. |
+| `WEB_TERMINAL_PASSWORD` | access password | ttyd password. |
+| `WEB_TERMINAL_MAX_CLIENTS` | `2` | ttyd max clients. |
+| `HEALTH_SERVER_ENABLED` | `1` | Serve a small health page when ttyd is disabled/unavailable. |
+| `HEALTH_SERVER_PORT` | `8888` | ttyd or health server port. |
+| `HEARTBEAT_ENABLED` | `auto` | `auto` enables heartbeat only when `HEARTBEAT_URL` is set. |
+| `HEARTBEAT_URL` | empty | Receiver endpoint, usually `https://your-domain.example/api/heartbeat`. |
+| `HEARTBEAT_INTERVAL_SECONDS` | `60` | Miner running heartbeat interval. |
+| `HEARTBEAT_TIMEOUT_SECONDS` | `5` | Heartbeat POST timeout. |
+| `HEARTBEAT_TOKEN` | empty | Optional bearer token for heartbeat receiver. |
+
+### GPU Tuning
+
+| Variable | Default | Use |
+| --- | --- | --- |
+| `GPU_PERSISTENCE_MODE` | empty | Passed to `nvidia-smi -pm`. |
+| `GPU_POWER_LIMIT` | empty | Passed to `nvidia-smi -pl`. |
+| `GPU_LOCK_CORE_CLOCKS` | empty | Passed to `nvidia-smi -lgc`. Single value becomes `value,value`. |
+| `GPU_LOCK_MEMORY_CLOCKS` | empty | Passed to `nvidia-smi -lmc`. Single value becomes `value,value`. |
 
 ## Miner Profiles
 

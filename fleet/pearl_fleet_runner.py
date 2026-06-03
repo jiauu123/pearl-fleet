@@ -32,6 +32,11 @@ DEFAULTS = {
     "CONFIG_SYNC_ENABLED": "1",
     "CONFIG_POLL_SECONDS": "300",
     "CONFIG_POLL_JITTER_SECONDS": "30",
+    "CONFIG_HTTP_TIMEOUT_SECONDS": "20",
+    "CONFIG_HTTP_CONDITIONAL_REQUESTS": "1",
+    "CONFIG_HTTP_CACHE_BUST": "0",
+    "CONFIG_HASH_CHECK_ENABLED": "0",
+    "CONFIG_HASH_URL_SUFFIX": ".sha256",
     "WATCHDOG_ENABLED": "1",
     "WATCHDOG_CHECK_INTERVAL": "30",
     "WATCHDOG_STARTUP_GRACE": "180",
@@ -117,13 +122,24 @@ def load_env_files(paths_text):
     return result
 
 
-def cache_busted_url(url, identity=None):
-    sep = "&" if "?" in url else "?"
-    minute = int(time.time() // 60)
-    query = f"_pearl_min={minute}"
+def int_config(cfg, key, default):
+    try:
+        return int(cfg.get(key, default))
+    except Exception:
+        return int(default)
+
+
+def request_url(url, cfg=None, identity=None):
+    cfg = cfg or {}
+    query_parts = []
     if identity:
-        query += f"&id={urllib.parse.quote(identity)}"
-    return f"{url}{sep}{query}"
+        query_parts.append(("id", identity))
+    if truthy(cfg.get("CONFIG_HTTP_CACHE_BUST")):
+        query_parts.append(("_pearl_min", str(int(time.time() // 60))))
+    if not query_parts:
+        return url
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}{urllib.parse.urlencode(query_parts)}"
 
 
 def state_path(cfg, name):
@@ -132,19 +148,116 @@ def state_path(cfg, name):
     return root / name
 
 
+def cache_meta_path(cache):
+    return cache.with_name(f"{cache.name}.meta.json")
+
+
+def load_cache_meta(cache):
+    try:
+        return json.loads(cache_meta_path(cache).read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def write_cache_meta(cache, meta):
+    try:
+        cache_meta_path(cache).write_text(json.dumps(meta, sort_keys=True, indent=2), encoding="utf-8")
+    except Exception as exc:
+        warn(f"[config] cache metadata write failed {cache}: {exc}")
+
+
+def sha256_text(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def parse_sha256_text(text):
+    match = re.search(r"\b([a-fA-F0-9]{64})\b", text or "")
+    return match.group(1).lower() if match else ""
+
+
+def hash_sidecar_url(url, cfg):
+    suffix = str(cfg.get("CONFIG_HASH_URL_SUFFIX", DEFAULTS["CONFIG_HASH_URL_SUFFIX"]) or "")
+    if not suffix:
+        return ""
+    parsed = urllib.parse.urlsplit(url)
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path + suffix, parsed.query, parsed.fragment))
+
+
+def fetch_remote_sha256(url, cfg, identity=None):
+    if not truthy(cfg.get("CONFIG_HASH_CHECK_ENABLED")):
+        return ""
+    sha_url = hash_sidecar_url(url, cfg)
+    if not sha_url:
+        return ""
+    try:
+        req = urllib.request.Request(
+            request_url(sha_url, cfg, identity),
+            headers={"User-Agent": "pearl-fleet-runner/1", "Cache-Control": "no-cache"},
+        )
+        with urllib.request.urlopen(req, timeout=int_config(cfg, "CONFIG_HTTP_TIMEOUT_SECONDS", 20)) as resp:
+            return parse_sha256_text(resp.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            warn(f"[config] hash sidecar fetch failed {sha_url}: {exc}")
+        return ""
+    except Exception as exc:
+        warn(f"[config] hash sidecar fetch failed {sha_url}: {exc}")
+        return ""
+
+
 def safe_cache_name(prefix, url, suffix):
     digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
     hostish = URL_CACHE_RE.sub("-", urllib.parse.urlparse(url).netloc or "url").strip("-")
     return f"{prefix}-{hostish}-{digest}.{suffix}"
 
 
-def fetch_text(url, timeout=20, identity=None):
-    req = urllib.request.Request(
-        cache_busted_url(url, identity),
-        headers={"User-Agent": "pearl-fleet-runner/1"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", errors="replace")
+def fetch_text(url, timeout=20, identity=None, cfg=None, cache=None):
+    cfg = cfg or {}
+    cache = Path(cache) if cache else None
+    timeout = int_config(cfg, "CONFIG_HTTP_TIMEOUT_SECONDS", timeout)
+    meta = load_cache_meta(cache) if cache else {}
+
+    if cache and cache.is_file():
+        remote_sha = fetch_remote_sha256(url, cfg, identity)
+        if remote_sha and remote_sha == meta.get("sha256"):
+            log(f"[config] unchanged by remote sha256 {url}")
+            return cache.read_text(encoding="utf-8", errors="replace")
+
+    headers = {"User-Agent": "pearl-fleet-runner/1", "Cache-Control": "no-cache"}
+    if cache and cache.is_file() and truthy(cfg.get("CONFIG_HTTP_CONDITIONAL_REQUESTS")):
+        if meta.get("url") == url:
+            if meta.get("etag"):
+                headers["If-None-Match"] = meta["etag"]
+            if meta.get("last_modified"):
+                headers["If-Modified-Since"] = meta["last_modified"]
+    req = urllib.request.Request(request_url(url, cfg, identity), headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            text = resp.read().decode("utf-8", errors="replace")
+            if cache:
+                digest = sha256_text(text)
+                if cache.is_file() and digest == meta.get("sha256"):
+                    log(f"[config] unchanged by content sha256 {url}")
+                else:
+                    cache.write_text(text, encoding="utf-8")
+                write_cache_meta(
+                    cache,
+                    {
+                        "url": url,
+                        "etag": resp.headers.get("ETag", ""),
+                        "last_modified": resp.headers.get("Last-Modified", ""),
+                        "sha256": digest,
+                        "checked_at": int(time.time()),
+                    },
+                )
+            return text
+    except urllib.error.HTTPError as exc:
+        if exc.code == 304 and cache and cache.is_file():
+            log(f"[config] unchanged by HTTP 304 {url}")
+            meta["checked_at"] = int(time.time())
+            write_cache_meta(cache, meta)
+            return cache.read_text(encoding="utf-8", errors="replace")
+        raise
 
 
 def fetch_env_with_cache(url, cfg, cache_name, identity=None):
@@ -153,8 +266,7 @@ def fetch_env_with_cache(url, cfg, cache_name, identity=None):
     cache = state_path(cfg, cache_name)
     try:
         log(f"[config] fetching {url}")
-        text = fetch_text(url, identity=identity)
-        cache.write_text(text, encoding="utf-8")
+        text = fetch_text(url, identity=identity, cfg=cfg, cache=cache)
         return parse_env_text(text, url)
     except Exception as exc:
         warn(f"[config] fetch failed {url}: {exc}")
@@ -170,9 +282,8 @@ def fetch_json_with_cache(url, cfg, cache_name, identity=None):
     cache = state_path(cfg, cache_name)
     try:
         log(f"[registry] fetching {url}")
-        text = fetch_text(url, identity=identity)
+        text = fetch_text(url, identity=identity, cfg=cfg, cache=cache)
         data = json.loads(text)
-        cache.write_text(text, encoding="utf-8")
         return data
     except Exception as exc:
         warn(f"[registry] fetch failed {url}: {exc}")
@@ -514,7 +625,7 @@ def fetch_target_envs(cfg, identity):
     if template:
         try:
             url = render_template(template, vars_map)
-            result = merge(result, fetch_optional_env(url, identity["WORKER_NAME"]))
+            result = merge(result, fetch_optional_env(url, identity["WORKER_NAME"], cfg))
         except KeyError as exc:
             warn(f"[config] target URL missing variable {exc}; skipping")
     base = cfg.get("FLEET_TARGETS_BASE_URL", "").rstrip("/")
@@ -524,20 +635,27 @@ def fetch_target_envs(cfg, identity):
             if not name:
                 continue
             url = f"{base}/{urllib.parse.quote(name)}.env"
-            fetched = fetch_optional_env(url, identity["WORKER_NAME"])
+            fetched = fetch_optional_env(url, identity["WORKER_NAME"], cfg)
             if fetched:
                 result = merge(result, fetched)
                 break
     return result
 
 
-def fetch_optional_env(url, identity=None):
+def fetch_optional_env(url, identity=None, cfg=None):
+    cfg = cfg or DEFAULTS
+    cache = state_path(cfg, safe_cache_name("target", url, "env"))
     try:
         log(f"[config] fetching optional target {url}")
-        return parse_env_text(fetch_text(url, identity=identity), url)
+        return parse_env_text(fetch_text(url, identity=identity, cfg=cfg, cache=cache), url)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             log(f"[config] no target override at {url}")
+            try:
+                cache.unlink(missing_ok=True)
+                cache_meta_path(cache).unlink(missing_ok=True)
+            except Exception:
+                pass
             return {}
         warn(f"[config] optional target fetch failed {url}: {exc}")
         return {}
@@ -903,6 +1021,61 @@ def miner_metrics(state, proc, attempt, fingerprint, extra=None):
     return metrics
 
 
+class ConfigSyncWorker:
+    def __init__(self, cfg, fingerprint):
+        self.cfg = dict(cfg)
+        self.fingerprint = fingerprint
+        self.stop_event = threading.Event()
+        self.lock = threading.Lock()
+        self.result = None
+        self.thread = threading.Thread(target=self.run, daemon=True)
+
+    def start(self):
+        self.thread.start()
+
+    def stop(self):
+        self.stop_event.set()
+        self.thread.join(timeout=0.2)
+
+    def pop_result(self):
+        with self.lock:
+            result = self.result
+            self.result = None
+            return result
+
+    def set_result(self, result):
+        with self.lock:
+            self.result = result
+
+    def run(self):
+        delay = poll_interval(self.cfg)
+        while not self.stop_event.wait(delay):
+            try:
+                log("[config] background sync check")
+                new_cfg = load_config()
+                new_platforms = load_platform_registry(new_cfg)
+                new_registry = load_registry(new_cfg, build_identity(new_cfg, new_platforms))
+                new_fp = config_fingerprint(new_cfg, new_registry, new_platforms)
+                self.cfg = new_cfg
+                if not truthy(new_cfg.get("CONFIG_SYNC_ENABLED")):
+                    log("[config] background sync disabled by new config")
+                    return
+                if new_fp != self.fingerprint:
+                    self.set_result(
+                        {
+                            "fingerprint": new_fp,
+                            "cfg": new_cfg,
+                            "registry": new_registry,
+                            "platforms": new_platforms,
+                        }
+                    )
+                    return
+                self.fingerprint = new_fp
+            except Exception as exc:
+                warn(f"[config] background sync failed; keeping current miner: {exc}")
+            delay = poll_interval(self.cfg)
+
+
 def run_once(cfg, registry, fingerprint, attempt):
     cmd, entry = build_command(cfg, registry)
     watchdog = entry.get("watchdog", {})
@@ -939,103 +1112,109 @@ def run_once(cfg, registry, fingerprint, attempt):
     state = LogState()
     post_heartbeat(cfg, "miner_start", "running", miner_metrics(state, proc, attempt, fingerprint))
     start = time.time()
-    next_poll = time.time() + poll_interval(cfg)
     next_heartbeat = time.time() + safe_int(cfg.get("HEARTBEAT_INTERVAL_SECONDS"), 60)
+    sync_worker = None
+    if truthy(cfg.get("CONFIG_SYNC_ENABLED")):
+        sync_worker = ConfigSyncWorker(cfg, fingerprint)
+        sync_worker.start()
 
-    while True:
-        try:
-            line = q.get(timeout=1)
-        except queue.Empty:
-            line = None
-        if line is not None:
-            if line:
-                log(line)
-                clean_line = strip_ansi(line)
-                matched, value = apply_count_rules(clean_line, accepted_count_rules, state.accepted)
-                if matched:
-                    state.accepted = value
-                    state.last_activity = time.time()
-                matched, value = apply_count_rules(clean_line, rejected_count_rules, state.rejected)
-                if matched:
-                    state.rejected = value
-                    state.last_activity = time.time()
-                matched, value = apply_count_rules(clean_line, accepted_rules, state.accepted)
-                if matched:
-                    state.accepted = value
-                    state.last_activity = time.time()
-                matched, value = apply_count_rules(clean_line, rejected_rules, state.rejected)
-                if matched:
-                    state.rejected = value
-                    state.last_activity = time.time()
-                th_s, raw_value, raw_unit = apply_hashrate_rules(clean_line, hashrate_rules, hashrate_unit)
-                if th_s is not None:
-                    state.last_hashrate_th_s = round(th_s, 1)
-                    state.last_hashrate = f"{th_s:.1f} TH/s"
-                    state.last_hashrate_raw = f"{raw_value} {raw_unit}".strip()
-                    state.last_activity = time.time()
-                if any(rule["compiled"].search(clean_line) for rule in error_rules):
-                    state.error_seen = True
-                    warn("[watchdog] error regex matched; restarting miner")
-                    terminate_process(proc)
-                    status = proc.wait()
-                    post_heartbeat(
-                        cfg,
-                        "watchdog_restart",
-                        "error_regex",
-                        miner_metrics(state, proc, attempt, fingerprint, {"exit_code": status}),
-                    )
-                    return status
-
-        if proc.poll() is not None:
-            post_heartbeat(
-                cfg,
-                "miner_exit",
-                "exited",
-                miner_metrics(state, proc, attempt, fingerprint, {"exit_code": proc.returncode}),
-            )
-            return proc.returncode
-
-        now = time.time()
-        if now >= next_heartbeat:
-            next_heartbeat = now + safe_int(cfg.get("HEARTBEAT_INTERVAL_SECONDS"), 60)
-            post_heartbeat(cfg, "miner_running", "running", miner_metrics(state, proc, attempt, fingerprint))
-
-        if truthy(cfg.get("CONFIG_SYNC_ENABLED")) and now >= next_poll:
-            next_poll = now + poll_interval(cfg)
+    try:
+        while True:
             try:
-                new_cfg = load_config()
-                new_platforms = load_platform_registry(new_cfg)
-                new_registry = load_registry(new_cfg, build_identity(new_cfg, new_platforms))
-                new_fp = config_fingerprint(new_cfg, new_registry, new_platforms)
-                if new_fp != fingerprint:
+                line = q.get(timeout=1)
+            except queue.Empty:
+                line = None
+            if line is not None:
+                if line:
+                    log(line)
+                    clean_line = strip_ansi(line)
+                    matched, value = apply_count_rules(clean_line, accepted_count_rules, state.accepted)
+                    if matched:
+                        state.accepted = value
+                        state.last_activity = time.time()
+                    matched, value = apply_count_rules(clean_line, rejected_count_rules, state.rejected)
+                    if matched:
+                        state.rejected = value
+                        state.last_activity = time.time()
+                    matched, value = apply_count_rules(clean_line, accepted_rules, state.accepted)
+                    if matched:
+                        state.accepted = value
+                        state.last_activity = time.time()
+                    matched, value = apply_count_rules(clean_line, rejected_rules, state.rejected)
+                    if matched:
+                        state.rejected = value
+                        state.last_activity = time.time()
+                    th_s, raw_value, raw_unit = apply_hashrate_rules(clean_line, hashrate_rules, hashrate_unit)
+                    if th_s is not None:
+                        state.last_hashrate_th_s = round(th_s, 1)
+                        state.last_hashrate = f"{th_s:.1f} TH/s"
+                        state.last_hashrate_raw = f"{raw_value} {raw_unit}".strip()
+                        state.last_activity = time.time()
+                    if any(rule["compiled"].search(clean_line) for rule in error_rules):
+                        state.error_seen = True
+                        warn("[watchdog] error regex matched; restarting miner")
+                        terminate_process(proc)
+                        status = proc.wait()
+                        post_heartbeat(
+                            cfg,
+                            "watchdog_restart",
+                            "error_regex",
+                            miner_metrics(state, proc, attempt, fingerprint, {"exit_code": status}),
+                        )
+                        return status
+
+            if proc.poll() is not None:
+                post_heartbeat(
+                    cfg,
+                    "miner_exit",
+                    "exited",
+                    miner_metrics(state, proc, attempt, fingerprint, {"exit_code": proc.returncode}),
+                )
+                return proc.returncode
+
+            if sync_worker:
+                result = sync_worker.pop_result()
+                if result:
                     log("[config] changed; restarting miner with new config")
                     terminate_process(proc)
                     post_heartbeat(
                         cfg,
                         "config_changed",
                         "restart",
-                        miner_metrics(state, proc, attempt, fingerprint, {"new_fingerprint": new_fp}),
+                        miner_metrics(
+                            state,
+                            proc,
+                            attempt,
+                            fingerprint,
+                            {"new_fingerprint": result.get("fingerprint")},
+                        ),
                     )
                     return 99
-            except Exception as exc:
-                warn(f"[config] sync check failed; keeping current miner: {exc}")
 
-        if not truthy(cfg.get("WATCHDOG_ENABLED")):
-            continue
-        mode = str(watchdog.get("mode", "process"))
-        if mode in {"log", "api"} and now - start > int(watchdog.get("warmup_seconds", 180)):
-            stale = int(watchdog.get("stale_seconds", cfg.get("WATCHDOG_STALE_SECONDS", 300)))
-            if now - state.last_activity > stale:
-                warn(f"[watchdog] no log activity for {int(now - state.last_activity)}s; restarting miner")
-                terminate_process(proc)
-                status = proc.wait()
-                post_heartbeat(
-                    cfg,
-                    "watchdog_restart",
-                    "stale_log",
-                    miner_metrics(state, proc, attempt, fingerprint, {"exit_code": status}),
-                )
-                return status
+            now = time.time()
+            if now >= next_heartbeat:
+                next_heartbeat = now + safe_int(cfg.get("HEARTBEAT_INTERVAL_SECONDS"), 60)
+                post_heartbeat(cfg, "miner_running", "running", miner_metrics(state, proc, attempt, fingerprint))
+
+            if not truthy(cfg.get("WATCHDOG_ENABLED")):
+                continue
+            mode = str(watchdog.get("mode", "process"))
+            if mode in {"log", "api"} and now - start > int(watchdog.get("warmup_seconds", 180)):
+                stale = int(watchdog.get("stale_seconds", cfg.get("WATCHDOG_STALE_SECONDS", 300)))
+                if now - state.last_activity > stale:
+                    warn(f"[watchdog] no log activity for {int(now - state.last_activity)}s; restarting miner")
+                    terminate_process(proc)
+                    status = proc.wait()
+                    post_heartbeat(
+                        cfg,
+                        "watchdog_restart",
+                        "stale_log",
+                        miner_metrics(state, proc, attempt, fingerprint, {"exit_code": status}),
+                    )
+                    return status
+    finally:
+        if sync_worker:
+            sync_worker.stop()
 
 
 def poll_interval(cfg):

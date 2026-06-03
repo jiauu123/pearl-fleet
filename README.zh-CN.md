@@ -196,7 +196,7 @@ your-domain.example {
 
   handle {
     root * /pearl-fleet
-    header Cache-Control "no-store"
+    header Cache-Control "no-cache"
     file_server
   }
 }
@@ -236,6 +236,169 @@ CONFIG_POLL_JITTER_SECONDS=30
 ```
 
 也就是大约 5 分钟同步一次。
+
+miner 启动后，配置同步在后台线程里执行，不会阻塞 miner 日志解析、heartbeat 或
+watchdog 检查。runner 会优先使用服务端的 `ETag` / `Last-Modified`，发送
+`If-None-Match` / `If-Modified-Since`；如果服务端返回 304，就不下载完整文件。
+如果服务端不支持条件请求，runner 会下载后做本地内容 hash，只有最终配置
+fingerprint 变化才重启矿工。
+
+如果你的 VPS 是简单静态文件服务，也可以维护可选 `.sha256` 文件来避免完整下载：
+
+```bash
+cd /pearl-fleet
+sha256sum bootstrap.env | awk '{print $1}' > bootstrap.env.sha256
+sha256sum fleet.env | awk '{print $1}' > fleet.env.sha256
+sha256sum miners.json | awk '{print $1}' > miners.json.sha256
+sha256sum platforms.json | awk '{print $1}' > platforms.json.sha256
+```
+
+然后启用：
+
+```env
+CONFIG_HASH_CHECK_ENABLED=1
+CONFIG_HASH_URL_SUFFIX=.sha256
+```
+
+## 环境变量完整说明
+
+### 必填和基础挖矿配置
+
+| 变量 | 默认值 | 用法 |
+| --- | --- | --- |
+| `MINER_WALLET` | 空 | 必填钱包地址。public 配置故意不设置。 |
+| `MINER_USER` | 空 | `MINER_WALLET` 的旧别名。 |
+| `MINER_PROFILE` | `pearlpool` | 矿工/矿池 profile。支持值见下方 profile 列表。 |
+| `WORKER_PREFIX` | `auto` | worker 名字前缀。`auto` 表示按平台规则自动选择。 |
+
+### 矿池和矿工覆盖
+
+| 变量 | 适用 profile | 用法 |
+| --- | --- | --- |
+| `PEARLHASH_POOL_HOST` | `pearlpool` | pearlpool 风格矿工的 host:port，例如 `84.32.220.219:9000`。 |
+| `MINER_POOL_URL` | `luckypool`, `alphapool`, `srbminer`, `srbminer-herominers` | 矿池地址。Luckypool/Alphapool 使用 `stratum+tcp://...`；SRBMiner profile 使用纯 `host:port`。 |
+| `SRB_API_PORT` | SRBMiner profiles | SRBMiner 本地 API 端口。 |
+| `ALPHA_DIFFICULTY` | `alphapool` | 静态 difficulty，用于渲染 `ALPHA_PASSWORD`。 |
+| `ALPHA_PASSWORD` | `alphapool` | 矿池 password，默认渲染为 `x;d=${ALPHA_DIFFICULTY}`。 |
+| `PEARLFORTUNE_PROXY` | `pearlfortune` | Pearlfortune proxy，例如 `jp.pearlfortune.org:443`。 |
+
+示例：
+
+```env
+# Pearlpool 亚洲节点
+MINER_PROFILE=pearlpool
+PEARLHASH_POOL_HOST=84.32.220.219:9000
+
+# SRBMiner + Luckypool
+MINER_PROFILE=srbminer
+MINER_POOL_URL=pearl-eu2.luckypool.io:3360
+
+# SRBMiner + Herominers 亚洲节点
+MINER_PROFILE=srbminer-herominers
+MINER_POOL_URL=kr.pearl.herominers.com:1200
+```
+
+常用 Herominers 节点：
+
+```text
+de.pearl.herominers.com:1200
+fr.pearl.herominers.com:1200
+es.pearl.herominers.com:1200
+fi.pearl.herominers.com:1200
+ru.pearl.herominers.com:1200
+ca.pearl.herominers.com:1200
+us.pearl.herominers.com:1200
+us2.pearl.herominers.com:1200
+us3.pearl.herominers.com:1200
+br.pearl.herominers.com:1200
+hk.pearl.herominers.com:1200
+kr.pearl.herominers.com:1200
+sg.pearl.herominers.com:1200
+tr.pearl.herominers.com:1200
+au.pearl.herominers.com:1200
+```
+
+### 远程配置源
+
+| 变量 | 默认值 | 用法 |
+| --- | --- | --- |
+| `PEARL_BOOTSTRAP_URL` | GitHub Raw public bootstrap | 第一层远程 env。改成自己的 VPS/域名即可完全接管配置。 |
+| `PEARL_CONFIG_URL` | 来自 bootstrap | 全局 `fleet.env` URL。 |
+| `MINER_CONFIG_URL` | 空 | `PEARL_CONFIG_URL` 的旧别名。 |
+| `MINER_REGISTRY_URL` | 来自 bootstrap | 远程 `miners.json`。 |
+| `PLATFORM_REGISTRY_URL` | 空 | 远程 `platforms.json`。 |
+| `FLEET_TARGETS_BASE_URL` | 空 | 单机 override 目录，例如 `targets/<worker>.env`。 |
+| `FLEET_TARGET_CONFIG_URL` | 空 | 精确的单机 override URL 模板，支持 `${WORKER_NAME}` 等变量。 |
+| `DISABLE_REMOTE_CONFIG` | `0` | 设为 `1` 后只使用本地文件和平台 env。 |
+
+### 同步和 HTTP 缓存
+
+| 变量 | 默认值 | 用法 |
+| --- | --- | --- |
+| `CONFIG_SYNC_ENABLED` | `1` | miner 启动后的后台配置同步。 |
+| `CONFIG_POLL_SECONDS` | `300` | 同步基础间隔。 |
+| `CONFIG_POLL_JITTER_SECONDS` | `30` | 随机抖动范围。当前行为是 `base +/- jitter`。 |
+| `CONFIG_HTTP_TIMEOUT_SECONDS` | `20` | 每个远程配置请求的超时时间。 |
+| `CONFIG_HTTP_CONDITIONAL_REQUESTS` | `1` | 有缓存头时使用 `If-None-Match` / `If-Modified-Since`。 |
+| `CONFIG_HASH_CHECK_ENABLED` | `0` | 下载完整文件前先检查可选 hash sidecar。 |
+| `CONFIG_HASH_URL_SUFFIX` | `.sha256` | hash sidecar 后缀。 |
+| `CONFIG_HTTP_CACHE_BUST` | `0` | 添加 `_pearl_min` cache-busting query。启用条件请求时通常不要打开。 |
+
+### 本地文件和缓存
+
+| 变量 | 默认值 | 用法 |
+| --- | --- | --- |
+| `FLEET_LOCAL_ENV_FILES` | `/workspace/fleet.env /runpod-volume/fleet.env /app/fleet.env` | 远程全局配置后加载的本地 env。 |
+| `FLEET_OVERRIDE_FILES` | `/workspace/fleet.override.env /runpod-volume/fleet.override.env /app/fleet.override.env` | 最高优先级本地 override。 |
+| `FLEET_LOCAL_REGISTRY_FILES` | `/workspace/miners.json /runpod-volume/miners.json /app/miners.json` | 本地 miner registry fallback。 |
+| `FLEET_LOCAL_PLATFORM_FILES` | `/workspace/platforms.json /runpod-volume/platforms.json /app/platforms.json` | 本地 platform registry fallback。 |
+| `FLEET_STATE_DIR` | `/app/state` | 缓存和状态目录。需要持久化就设到 `/workspace/...`。 |
+| `MINER_CACHE_DIR` | `/app/miners` | 下载的矿工缓存目录。需要持久化就设到 `/workspace/...`。 |
+| `ALWAYS_DOWNLOAD_MINER` | `0` | 设为 `1` 强制重新下载矿工。 |
+| `MINER_DRY_RUN` | `0` | 设为 `1` 只渲染配置，不启动矿工。 |
+
+### Watchdog
+
+| 变量 | 默认值 | 用法 |
+| --- | --- | --- |
+| `WATCHDOG_ENABLED` | `1` | 启用重启逻辑。 |
+| `WATCHDOG_STARTUP_GRACE` | `180` | profile 没覆盖时的默认启动宽限期。 |
+| `WATCHDOG_STALE_SECONDS` | `300` | profile 没覆盖时的默认日志活动超时。 |
+| `WATCHDOG_RESTART_DELAY` | `10` | 重启间隔。 |
+| `WATCHDOG_MAX_RESTARTS` | `0` | `0` 表示无限重启。 |
+
+profile 里的 watchdog 会覆盖这些默认值。当前 SRBMiner profile 使用
+`warmup_seconds=90` 和 `stale_seconds=240`；accepted share、rejected share
+或 hashrate 行都会刷新活动时间。
+
+### SSH、ttyd 和 Heartbeat
+
+| 变量 | 默认值 | 用法 |
+| --- | --- | --- |
+| `FLEET_ACCESS_PASSWORD` | 空 | SSH 和 ttyd 共用密码，如果更具体变量为空。 |
+| `RUNPOD_ACCESS_PASSWORD` | 空 | RunPod 友好的访问密码别名。 |
+| `SSH_PASSWORD` | 空 | SSH-only 密码 fallback。 |
+| `SSH_ENABLED` | `1` | 启动 22 端口 sshd。 |
+| `WEB_TERMINAL_ENABLED` | `1` | 有密码时启动 8888 端口 ttyd。 |
+| `WEB_TERMINAL_USER` | `admin` | ttyd 用户名。 |
+| `WEB_TERMINAL_PASSWORD` | access password | ttyd 密码。 |
+| `WEB_TERMINAL_MAX_CLIENTS` | `2` | ttyd 最大连接数。 |
+| `HEALTH_SERVER_ENABLED` | `1` | ttyd 禁用或不可用时提供简单健康页。 |
+| `HEALTH_SERVER_PORT` | `8888` | ttyd 或健康页端口。 |
+| `HEARTBEAT_ENABLED` | `auto` | `auto` 表示设置了 `HEARTBEAT_URL` 才启用。 |
+| `HEARTBEAT_URL` | 空 | 接收端地址，通常是 `https://your-domain.example/api/heartbeat`。 |
+| `HEARTBEAT_INTERVAL_SECONDS` | `60` | miner running 心跳间隔。 |
+| `HEARTBEAT_TIMEOUT_SECONDS` | `5` | heartbeat POST 超时。 |
+| `HEARTBEAT_TOKEN` | 空 | 可选 bearer token。 |
+
+### GPU 调参
+
+| 变量 | 默认值 | 用法 |
+| --- | --- | --- |
+| `GPU_PERSISTENCE_MODE` | 空 | 传给 `nvidia-smi -pm`。 |
+| `GPU_POWER_LIMIT` | 空 | 传给 `nvidia-smi -pl`。 |
+| `GPU_LOCK_CORE_CLOCKS` | 空 | 传给 `nvidia-smi -lgc`。单值会变成 `value,value`。 |
+| `GPU_LOCK_MEMORY_CLOCKS` | 空 | 传给 `nvidia-smi -lmc`。单值会变成 `value,value`。 |
 
 ## 当前矿工 profile
 
