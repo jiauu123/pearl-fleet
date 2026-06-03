@@ -601,18 +601,26 @@ def config_fingerprint(cfg, registry, platforms=None):
 
 
 def redacted_command(cmd, cfg):
-    secrets = {
-        cfg.get("MINER_WALLET", ""),
-        cfg.get("MINER_USER", ""),
-        cfg.get("ALPHA_PASSWORD", ""),
-        cfg.get("MINER_PASSWORD", ""),
-    }
+    secrets = [
+        str(value)
+        for value in (
+            cfg.get("MINER_WALLET", ""),
+            cfg.get("MINER_USER", ""),
+            cfg.get("ALPHA_PASSWORD", ""),
+            cfg.get("MINER_PASSWORD", ""),
+        )
+        if value
+    ]
     redacted = []
     for item in cmd:
-        if item and item in secrets:
+        text = str(item)
+        if text and text in secrets:
             redacted.append("REDACTED")
         else:
-            redacted.append(item)
+            for secret in secrets:
+                if len(secret) >= 8 and secret in text:
+                    text = text.replace(secret, "REDACTED")
+            redacted.append(text)
     return " ".join(shlex_quote(x) for x in redacted)
 
 
