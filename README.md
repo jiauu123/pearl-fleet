@@ -365,13 +365,17 @@ au.pearl.herominers.com:1200
 | --- | --- | --- |
 | `WATCHDOG_ENABLED` | `1` | Enable restart logic. |
 | `WATCHDOG_STARTUP_GRACE` | `180` | Default warmup if a profile does not override it. |
-| `WATCHDOG_STALE_SECONDS` | `300` | Default stale log window if a profile does not override it. |
+| `WATCHDOG_STALE_SECONDS` | `300` | Default stale activity window if a profile does not override it. |
 | `WATCHDOG_RESTART_DELAY` | `10` | Delay between restart attempts. |
 | `WATCHDOG_MAX_RESTARTS` | `0` | `0` means unlimited restarts. |
 
 Profile-level watchdog values in `miners.json` override these defaults. Current
-SRBMiner profiles use `warmup_seconds=90` and `stale_seconds=240`; accepted
-shares, rejected shares, or hashrate lines all count as activity.
+SRBMiner profiles use a remote wrapper script selected by `miners.json`. The
+wrapper downloads SRBMiner, starts its local API, polls
+`http://127.0.0.1:${SRB_API_PORT}/api`, and restarts SRBMiner if API hashrate
+and share counters stay stale. The outer fleet runner only watches wrapper log
+lines, so this behavior can be changed by updating `miners.json` and the wrapper
+script without rebuilding the image.
 
 ### Access And Heartbeat
 
@@ -519,3 +523,20 @@ mine to someone else's wallet.
 Public config URLs are visible to workers and platform operators. Use your own
 HTTPS VPS/domain for private rollout control, per-worker overrides, and
 heartbeat.
+
+## Changelog
+
+### v1.1.0 - 2026-06-04
+
+- Switched SRBMiner profiles to SRBMiner-Multi 3.3.3 through an API wrapper that
+  monitors local API hashrate and share counters before restarting SRBMiner.
+- Updated worker naming templates to keep useful full platform IDs while
+  removing profile names from worker names. Examples:
+  `runpod-rtx-4090-<pod_id>`, `vast-rtx-4090-<instance_id>`,
+  `clore-rtx-4090-<server_id>`, `nosana-rtx-4090-<job_id>`, and
+  `salad-rtx-4090-<machine_id>`.
+- Added Clore server-id priority via `CLORE_SERVER_ID`; kept `CLORE_MACHINE_ID`
+  as fallback.
+- Kept legacy migration helpers out of the public release. Use the Fleet image
+  for new machines and maintain old-image migration scripts in private ops if
+  needed.

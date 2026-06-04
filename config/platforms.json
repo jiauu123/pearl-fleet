@@ -2,44 +2,104 @@
   "schema_version": 1,
   "platforms": {
     "runpod": {
-      "detect_env": ["RUNPOD_POD_ID", "RUNPOD_DC_ID"],
-      "instance_id_env": ["RUNPOD_POD_ID", "HOSTNAME"],
-      "machine_id_env": ["RUNPOD_POD_HOSTNAME", "RUNPOD_DC_ID"],
+      "detect_env": [
+        "RUNPOD_POD_ID",
+        "RUNPOD_DC_ID"
+      ],
+      "instance_id_env": [
+        "RUNPOD_POD_ID",
+        "HOSTNAME"
+      ],
+      "machine_id_env": [
+        "RUNPOD_POD_HOSTNAME",
+        "RUNPOD_DC_ID"
+      ],
       "offer_id_env": [],
       "worker_prefix": "runpod",
-      "worker_template": "${WORKER_PREFIX}-${MINER_PROFILE}-${GPU_MODEL}-m${MACHINE_ID_SHORT}-i${INSTANCE_ID_SHORT}"
+      "worker_template": "${WORKER_PREFIX}-${GPU_MODEL}-${INSTANCE_ID}"
     },
     "vast": {
-      "detect_env": ["VAST_CONTAINERLABEL", "VAST_INSTANCE_ID", "VAST_MACHINE_ID", "VAST_OFFER_ID"],
-      "instance_id_env": ["VAST_INSTANCE_ID", "VAST_CONTAINERLABEL", "CONTAINER_ID", "HOSTNAME"],
-      "machine_id_env": ["VAST_MACHINE_ID", "HOST_MACHINE_ID"],
-      "offer_id_env": ["VAST_OFFER_ID", "VAST_BUNDLE_ID"],
+      "detect_env": [
+        "VAST_CONTAINERLABEL",
+        "VAST_INSTANCE_ID",
+        "VAST_MACHINE_ID",
+        "VAST_OFFER_ID"
+      ],
+      "instance_id_env": [
+        "VAST_INSTANCE_ID",
+        "VAST_CONTAINERLABEL",
+        "CONTAINER_ID",
+        "HOSTNAME"
+      ],
+      "machine_id_env": [
+        "VAST_MACHINE_ID",
+        "HOST_MACHINE_ID"
+      ],
+      "offer_id_env": [
+        "VAST_OFFER_ID",
+        "VAST_BUNDLE_ID"
+      ],
       "worker_prefix": "vast",
-      "worker_template": "${WORKER_PREFIX}-${MINER_PROFILE}-${GPU_MODEL}-o${OFFER_ID_SHORT}-m${MACHINE_ID_SHORT}-i${INSTANCE_ID_SHORT}"
+      "worker_template": "${WORKER_PREFIX}-${GPU_MODEL}-${INSTANCE_ID}"
     },
     "clore": {
-      "detect_env": ["CLORE_ORDER_ID", "CLORE_MACHINE_ID"],
-      "instance_id_env": ["CLORE_ORDER_ID", "HOSTNAME"],
-      "machine_id_env": ["CLORE_MACHINE_ID"],
-      "offer_id_env": ["CLORE_OFFER_ID"],
+      "detect_env": [
+        "CLORE_SERVER_ID",
+        "CLORE_ORDER_ID",
+        "CLORE_MACHINE_ID"
+      ],
+      "instance_id_env": [
+        "CLORE_ORDER_ID",
+        "HOSTNAME"
+      ],
+      "machine_id_env": [
+        "CLORE_SERVER_ID",
+        "CLORE_MACHINE_ID"
+      ],
+      "offer_id_env": [
+        "CLORE_OFFER_ID"
+      ],
       "worker_prefix": "clore",
-      "worker_template": "${WORKER_PREFIX}-${MINER_PROFILE}-${GPU_MODEL}-m${MACHINE_ID_SHORT}-i${INSTANCE_ID_SHORT}"
+      "worker_template": "${WORKER_PREFIX}-${GPU_MODEL}-${MACHINE_ID}"
     },
     "nosana": {
-      "detect_env": ["NOSANA_JOB_ID", "NOSANA_MARKET"],
-      "instance_id_env": ["NOSANA_JOB_ID", "HOSTNAME"],
-      "machine_id_env": ["NOSANA_NODE_ID"],
-      "offer_id_env": ["NOSANA_MARKET"],
+      "detect_env": [
+        "NOSANA_JOB_ID",
+        "NOSANA_MARKET"
+      ],
+      "instance_id_env": [
+        "NOSANA_JOB_ID",
+        "HOSTNAME"
+      ],
+      "machine_id_env": [
+        "NOSANA_NODE_ID"
+      ],
+      "offer_id_env": [
+        "NOSANA_MARKET"
+      ],
       "worker_prefix": "nosana",
-      "worker_template": "${WORKER_PREFIX}-${MINER_PROFILE}-${GPU_MODEL}-o${OFFER_ID_SHORT}-i${INSTANCE_ID_SHORT}"
+      "worker_template": "${WORKER_PREFIX}-${GPU_MODEL}-${INSTANCE_ID}"
     },
     "salad": {
-      "detect_env": ["SALAD_MACHINE_ID", "SALAD_INSTANCE_ID", "SALAD_CONTAINER_GROUP_ID"],
-      "instance_id_env": ["SALAD_INSTANCE_ID", "HOSTNAME"],
-      "machine_id_env": ["SALAD_MACHINE_ID"],
-      "offer_id_env": ["SALAD_CONTAINER_GROUP_ID", "SALAD_ORGANIZATION_NAME", "SALAD_PROJECT_NAME"],
+      "detect_env": [
+        "SALAD_MACHINE_ID",
+        "SALAD_INSTANCE_ID",
+        "SALAD_CONTAINER_GROUP_ID"
+      ],
+      "instance_id_env": [
+        "SALAD_INSTANCE_ID",
+        "HOSTNAME"
+      ],
+      "machine_id_env": [
+        "SALAD_MACHINE_ID"
+      ],
+      "offer_id_env": [
+        "SALAD_CONTAINER_GROUP_ID",
+        "SALAD_ORGANIZATION_NAME",
+        "SALAD_PROJECT_NAME"
+      ],
       "worker_prefix": "salad",
-      "worker_template": "${WORKER_PREFIX}-${MINER_PROFILE}-${GPU_MODEL}-m${MACHINE_ID_SHORT}-i${INSTANCE_ID_SHORT}",
+      "worker_template": "${WORKER_PREFIX}-${GPU_MODEL}-${MACHINE_ID}",
       "actions": {
         "low_hashrate": {
           "type": "salad_reallocate",
@@ -49,20 +109,37 @@
       }
     },
     "vps": {
-      "detect_env": ["PEARL_VPS_ID", "VPS_ID"],
-      "instance_id_env": ["PEARL_VPS_ID", "VPS_ID", "HOSTNAME"],
-      "machine_id_env": ["HOST_MACHINE_ID"],
+      "detect_env": [
+        "PEARL_VPS_ID",
+        "VPS_ID"
+      ],
+      "instance_id_env": [
+        "PEARL_VPS_ID",
+        "VPS_ID",
+        "HOSTNAME"
+      ],
+      "machine_id_env": [
+        "HOST_MACHINE_ID"
+      ],
       "offer_id_env": [],
       "worker_prefix": "vps",
-      "worker_template": "${WORKER_PREFIX}-${MINER_PROFILE}-${GPU_MODEL}-i${INSTANCE_ID_SHORT}"
+      "worker_template": "${WORKER_PREFIX}-${GPU_MODEL}-${INSTANCE_ID}"
     },
     "generic": {
       "detect_env": [],
-      "instance_id_env": ["INSTANCE_ID", "HOSTNAME"],
-      "machine_id_env": ["MACHINE_ID", "HOST_MACHINE_ID"],
-      "offer_id_env": ["OFFER_ID"],
+      "instance_id_env": [
+        "INSTANCE_ID",
+        "HOSTNAME"
+      ],
+      "machine_id_env": [
+        "MACHINE_ID",
+        "HOST_MACHINE_ID"
+      ],
+      "offer_id_env": [
+        "OFFER_ID"
+      ],
       "worker_prefix": "generic",
-      "worker_template": "${WORKER_PREFIX}-${MINER_PROFILE}-${GPU_MODEL}-i${INSTANCE_ID_SHORT}"
+      "worker_template": "${WORKER_PREFIX}-${GPU_MODEL}-${INSTANCE_ID}"
     }
   }
 }

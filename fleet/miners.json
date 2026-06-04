@@ -133,12 +133,17 @@
       }
     },
     "srbminer": {
-      "url": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.3/SRBMiner-Multi-3-3-3-Linux.tar.gz",
-      "archive": "tar.gz",
-      "binary": "SRBMiner-MULTI",
+      "url": "${SRB_WRAPPER_URL:-https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/scripts/srbminer-api-wrapper.sh}?v=20260604-api1",
+      "archive": "file",
+      "binary": "srbminer-api-wrapper.sh",
       "env": {
         "MINER_POOL_URL": "pearl-eu2.luckypool.io:3360",
-        "SRB_API_PORT": "21550"
+        "SRB_API_PORT": "21550",
+        "SRBMINER_URL": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.3/SRBMiner-Multi-3-3-3-Linux.tar.gz",
+        "SRB_WATCHDOG_WARMUP_SECONDS": "180",
+        "SRB_WATCHDOG_STALE_SECONDS": "420",
+        "SRB_WATCHDOG_CHECK_INTERVAL": "30",
+        "SRB_WATCHDOG_MIN_HASHRATE_TH_S": "0.1"
       },
       "args": [
         "--algorithm", "pearlhash",
@@ -152,8 +157,8 @@
       ],
       "watchdog": {
         "mode": "log",
-        "warmup_seconds": 90,
-        "stale_seconds": 240,
+        "warmup_seconds": 180,
+        "stale_seconds": 600,
         "hashrate_regexes": [
           {
             "regex": "Total:\\s*([0-9]+(?:[.][0-9]+)?)\\s*([KMGT]?H/s)",
@@ -161,18 +166,35 @@
             "unit_group": 2
           }
         ],
+        "accepted_count_regexes": [
+          {
+            "regex": "accepted=([0-9]+)",
+            "group": 1
+          }
+        ],
+        "rejected_count_regexes": [
+          {
+            "regex": "rejected=([0-9]+)",
+            "group": 1
+          }
+        ],
         "accepted_regex": "share accepted",
         "rejected_regex": "share rejected|rejected",
-        "error_regex": "PARSE error|connection refused|failed|panic|segmentation fault"
+        "error_regex": "panic|segmentation fault"
       }
     },
     "srbminer-herominers": {
-      "url": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.3/SRBMiner-Multi-3-3-3-Linux.tar.gz",
-      "archive": "tar.gz",
-      "binary": "SRBMiner-MULTI",
+      "url": "${SRB_WRAPPER_URL:-https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/scripts/srbminer-api-wrapper.sh}?v=20260604-api1",
+      "archive": "file",
+      "binary": "srbminer-api-wrapper.sh",
       "env": {
         "MINER_POOL_URL": "de.pearl.herominers.com:1200",
-        "SRB_API_PORT": "21550"
+        "SRB_API_PORT": "21550",
+        "SRBMINER_URL": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.3/SRBMiner-Multi-3-3-3-Linux.tar.gz",
+        "SRB_WATCHDOG_WARMUP_SECONDS": "180",
+        "SRB_WATCHDOG_STALE_SECONDS": "420",
+        "SRB_WATCHDOG_CHECK_INTERVAL": "30",
+        "SRB_WATCHDOG_MIN_HASHRATE_TH_S": "0.1"
       },
       "args": [
         "--algorithm", "pearlhash",
@@ -185,8 +207,8 @@
       ],
       "watchdog": {
         "mode": "log",
-        "warmup_seconds": 90,
-        "stale_seconds": 240,
+        "warmup_seconds": 180,
+        "stale_seconds": 600,
         "hashrate_regexes": [
           {
             "regex": "Total:\\s*([0-9]+(?:[.][0-9]+)?)\\s*([KMGT]?H/s)",
@@ -194,9 +216,21 @@
             "unit_group": 2
           }
         ],
+        "accepted_count_regexes": [
+          {
+            "regex": "accepted=([0-9]+)",
+            "group": 1
+          }
+        ],
+        "rejected_count_regexes": [
+          {
+            "regex": "rejected=([0-9]+)",
+            "group": 1
+          }
+        ],
         "accepted_regex": "share accepted",
         "rejected_regex": "share rejected|rejected",
-        "error_regex": "PARSE error|connection refused|failed|panic|segmentation fault"
+        "error_regex": "panic|segmentation fault"
       }
     },
     "pearlfortune": {

@@ -363,13 +363,15 @@ au.pearl.herominers.com:1200
 | --- | --- | --- |
 | `WATCHDOG_ENABLED` | `1` | 启用重启逻辑。 |
 | `WATCHDOG_STARTUP_GRACE` | `180` | profile 没覆盖时的默认启动宽限期。 |
-| `WATCHDOG_STALE_SECONDS` | `300` | profile 没覆盖时的默认日志活动超时。 |
+| `WATCHDOG_STALE_SECONDS` | `300` | profile 没覆盖时的默认活动超时。 |
 | `WATCHDOG_RESTART_DELAY` | `10` | 重启间隔。 |
 | `WATCHDOG_MAX_RESTARTS` | `0` | `0` 表示无限重启。 |
 
 profile 里的 watchdog 会覆盖这些默认值。当前 SRBMiner profile 使用
-`warmup_seconds=90` 和 `stale_seconds=240`；accepted share、rejected share
-或 hashrate 行都会刷新活动时间。
+`miners.json` 选择的远程 wrapper 脚本。wrapper 负责下载 SRBMiner、启动本地
+API、轮询 `http://127.0.0.1:${SRB_API_PORT}/api`，并在 API 算力和 share
+计数长时间不更新时重启 SRBMiner。外层 fleet runner 只看 wrapper 输出的日志
+行，所以这套行为可以通过更新 `miners.json` 和 wrapper 脚本改变，不需要重建镜像。
 
 ### SSH、ttyd 和 Heartbeat
 
@@ -519,3 +521,17 @@ public GitHub 配置。
 
 public config URL 对 worker 和平台机主都是可见的。如果你需要私有控制、灰度、
 单机测试、heartbeat，应该使用自己的 HTTPS VPS/域名。
+
+## 更新日志
+
+### v1.1.0 - 2026-06-04
+
+- SRBMiner profile 改为通过 API wrapper 使用 SRBMiner-Multi 3.3.3，由
+  wrapper 监控本地 API 的算力和 share 计数，再决定是否重启 SRBMiner。
+- 更新 worker 命名模板：保留有用的平台完整 ID，并从 worker 名里移除 profile。
+  示例：`runpod-rtx-4090-<pod_id>`、`vast-rtx-4090-<instance_id>`、
+  `clore-rtx-4090-<server_id>`、`nosana-rtx-4090-<job_id>`、
+  `salad-rtx-4090-<machine_id>`。
+- Clore 优先使用 `CLORE_SERVER_ID` 作为机器 ID，`CLORE_MACHINE_ID` 作为兜底。
+- 旧镜像迁移 helper 不进入 public release。新机器使用 Fleet 镜像；旧镜像迁移脚本
+  如有需要应放在私有运维配置里维护。
