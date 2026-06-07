@@ -17,6 +17,13 @@ tdklyx/pearl-fleet:v1
 ghcr.io/selkk-lab/pearl-fleet:v1
 ```
 
+如果新矿工报 `GLIBC_2.39 not found`，使用 Ubuntu 24.04 / glibc 2.39 变体：
+
+```text
+tdklyx/pearl-fleet:ubuntu24-v1
+ghcr.io/selkk-lab/pearl-fleet:ubuntu24-v1
+```
+
 镜像默认读取这个 public GitHub bootstrap：
 
 ```text
@@ -509,6 +516,7 @@ docker run --rm \
 
 ```bash
 docker build -f fleet/Dockerfile.nocuda -t tdklyx/pearl-fleet:v1 fleet
+docker build -f fleet/Dockerfile.ubuntu24 -t tdklyx/pearl-fleet:ubuntu24-v1 fleet
 ```
 
 ## 安全说明
@@ -535,3 +543,12 @@ public config URL 对 worker 和平台机主都是可见的。如果你需要私
 - Clore 优先使用 `CLORE_SERVER_ID` 作为机器 ID，`CLORE_MACHINE_ID` 作为兜底。
 - 旧镜像迁移 helper 不进入 public release。新机器使用 Fleet 镜像；旧镜像迁移脚本
   如有需要应放在私有运维配置里维护。
+
+### ubuntu24-v1 - 2026-06-07
+
+- 新增 Ubuntu 24.04 no-CUDA 镜像变体，提供 glibc 2.39，用于需要
+  `GLIBC_2.39` 的矿工二进制。
+- 保持和 `v1` 相同的 Fleet entrypoint、runner、默认 bootstrap、SSH、ttyd、
+  watchdog 和 heartbeat 行为。
+- 只建议给需要新版 glibc 的 profile 或测试机器使用；能在 Ubuntu 22.04 /
+  glibc 2.35 正常运行的矿工继续用 `v1`。

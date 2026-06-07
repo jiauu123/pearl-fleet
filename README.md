@@ -17,6 +17,14 @@ tdklyx/pearl-fleet:v1
 ghcr.io/selkk-lab/pearl-fleet:v1
 ```
 
+Ubuntu 24.04 / glibc 2.39 variant for miners that fail with
+`GLIBC_2.39 not found`:
+
+```text
+tdklyx/pearl-fleet:ubuntu24-v1
+ghcr.io/selkk-lab/pearl-fleet:ubuntu24-v1
+```
+
 The image defaults to this public bootstrap:
 
 ```text
@@ -509,6 +517,7 @@ Build from source:
 
 ```bash
 docker build -f fleet/Dockerfile.nocuda -t tdklyx/pearl-fleet:v1 fleet
+docker build -f fleet/Dockerfile.ubuntu24 -t tdklyx/pearl-fleet:ubuntu24-v1 fleet
 ```
 
 ## Security Notes
@@ -540,3 +549,12 @@ heartbeat.
 - Kept legacy migration helpers out of the public release. Use the Fleet image
   for new machines and maintain old-image migration scripts in private ops if
   needed.
+
+### ubuntu24-v1 - 2026-06-07
+
+- Added an Ubuntu 24.04 no-CUDA image variant with glibc 2.39 for miner
+  binaries that require `GLIBC_2.39`.
+- Kept the same Fleet entrypoint, bundled runner, default bootstrap URL, SSH,
+  ttyd, watchdog, and heartbeat behavior as `v1`.
+- Intended for profiles or test machines that need newer glibc. Keep using
+  `v1` for miners that run correctly on Ubuntu 22.04 / glibc 2.35.
