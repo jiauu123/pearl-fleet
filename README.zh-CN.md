@@ -13,16 +13,18 @@ heartbeat。
 推荐 no-CUDA 镜像：
 
 ```text
-tdklyx/pearl-fleet:v1
-ghcr.io/selkk-lab/pearl-fleet:v1
+tdklyx/pearl-fleet:v1.2.0
+ghcr.io/selkk-lab/pearl-fleet:v1.2.0
 ```
 
 如果新矿工报 `GLIBC_2.39 not found`，使用 Ubuntu 24.04 / glibc 2.39 变体：
 
 ```text
-tdklyx/pearl-fleet:ubuntu24-v1
-ghcr.io/selkk-lab/pearl-fleet:ubuntu24-v1
+tdklyx/pearl-fleet:ubuntu24-v2
+ghcr.io/selkk-lab/pearl-fleet:ubuntu24-v2
 ```
+
+历史 tag `v1` / `ubuntu24-v1` 不包含 v1.2.0 的启动网络修复。
 
 镜像默认读取这个 public GitHub bootstrap：
 
@@ -43,7 +45,7 @@ PEARL_BOOTSTRAP_URL=https://your-domain.example/bootstrap.env
 至少需要设置钱包地址。public GitHub 配置故意不包含钱包。
 
 ```env
-MINER_WALLET=prl1replace_with_your_wallet
+MINER_WALLET=YOUR_PRL_WALLET
 ```
 
 管理密码：
@@ -87,7 +89,7 @@ Docker command: 留空
 环境变量：
 
 ```env
-MINER_WALLET=prl1replace_with_your_wallet
+MINER_WALLET=YOUR_PRL_WALLET
 PEARL_BOOTSTRAP_URL=https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/config/bootstrap.env
 FLEET_ACCESS_PASSWORD=change-me
 WEB_TERMINAL_PASSWORD=change-me
@@ -123,13 +125,13 @@ Persistent volume: 如果平台支持，挂载到 /workspace
 最小环境变量：
 
 ```env
-MINER_WALLET=prl1replace_with_your_wallet
+MINER_WALLET=YOUR_PRL_WALLET
 ```
 
 推荐环境变量：
 
 ```env
-MINER_WALLET=prl1replace_with_your_wallet
+MINER_WALLET=YOUR_PRL_WALLET
 PEARL_BOOTSTRAP_URL=https://your-domain.example/bootstrap.env
 FLEET_ACCESS_PASSWORD=change-me
 WEB_TERMINAL_PASSWORD=change-me
@@ -156,7 +158,7 @@ docker run -d --name pearl-fleet \
   -p 2222:22 \
   -p 8888:8888 \
   -v pearl-fleet-workspace:/workspace \
-  -e MINER_WALLET=prl1replace_with_your_wallet \
+  -e MINER_WALLET=YOUR_PRL_WALLET \
   -e PEARL_BOOTSTRAP_URL=https://your-domain.example/bootstrap.env \
   -e FLEET_ACCESS_PASSWORD=change-me \
   -e WEB_TERMINAL_PASSWORD=change-me \
@@ -213,7 +215,7 @@ your-domain.example {
 
 ```env
 PEARL_BOOTSTRAP_URL=https://your-domain.example/bootstrap.env
-MINER_WALLET=prl1replace_with_your_wallet
+MINER_WALLET=YOUR_PRL_WALLET
 ```
 
 后续如果换 VPS，只要 DNS 解析到新机器，并保持路径不变，已租机器不需要改环境变量。
@@ -350,6 +352,50 @@ au.pearl.herominers.com:1200
 | `CONFIG_HASH_CHECK_ENABLED` | `0` | 下载完整文件前先检查可选 hash sidecar。 |
 | `CONFIG_HASH_URL_SUFFIX` | `.sha256` | hash sidecar 后缀。 |
 | `CONFIG_HTTP_CACHE_BUST` | `0` | 添加 `_pearl_min` cache-busting query。启用条件请求时通常不要打开。 |
+| `CONFIG_CURL_FALLBACK_ENABLED` | `1` | Python `urllib` 拉配置失败时，用 `curl/wget` 兜底。 |
+| `CONFIG_CURL_IPV4_ONLY` | `1` | `curl` 兜底默认强制 IPv4，规避坏 IPv6。 |
+| `CONFIG_CURL_RETRIES` | `3` | `curl/wget` 拉配置重试次数。 |
+| `CONFIG_CURL_CONNECT_TIMEOUT_SECONDS` | `10` | `curl/wget` 连接超时。 |
+| `MINER_DOWNLOAD_TIMEOUT_SECONDS` | `180` | 矿工/wrapper 下载总超时。 |
+| `MINER_DOWNLOAD_RETRIES` | `3` | 矿工/wrapper 下载重试次数。 |
+
+### 网络诊断和修复
+
+新版镜像启动时默认先运行：
+
+```bash
+/usr/local/bin/fleet-network-fix.sh --boot --repair
+```
+
+它会诊断 DNS、TCP、HTTPS、Python urllib 和 curl 访问，默认修复
+`/etc/resolv.conf`，设置 IPv4 优先，并把结果写入：
+
+```text
+/var/log/pearl-fleet-network-fix.log
+```
+
+相关变量：
+
+| 变量 | 默认值 | 用法 |
+| --- | --- | --- |
+| `FLEET_NETWORK_FIX_ENABLED` | `1` | 镜像启动时是否自动运行网络修复。 |
+| `FLEET_DNS_SERVERS` | `1.1.1.1 8.8.8.8` | 写入 `/etc/resolv.conf` 的 DNS。 |
+| `FLEET_DNS_OPTIONS` | `timeout:2 attempts:3 rotate` | 写入 `/etc/resolv.conf` 的 resolver options。 |
+| `FLEET_NETWORK_CHECK_HOSTS` | 常用配置/GitHub/矿池域名 | 诊断时检查的域名列表。 |
+| `FLEET_NETWORK_CHECK_URLS` | 常用配置和矿工下载 URL | 诊断时检查的 URL 列表。 |
+| `FLEET_HOSTS_FALLBACKS` | 空 | 可选 `/etc/hosts` 兜底，格式 `host=ip host2=ip2`。只有确定 IP 时再用。 |
+
+旧机器不能换镜像，但 SSH 可用时，先把脚本上传到机器，再执行：
+
+```bash
+chmod 0755 /usr/local/bin/fleet-network-fix.sh
+/usr/local/bin/fleet-network-fix.sh --install --repair --restart-runner
+tail -n 120 /var/log/pearl-fleet-network-fix.log
+```
+
+`--install` 会尽量安装启动持久化：patch Fleet entrypoint、`/etc/rc.local`、
+`/etc/cron.d/pearl-fleet-network-fix`，有 systemd 时也会写一个 oneshot unit。
+如果机器连你的域名也不通，不要用 `curl` 下载这个脚本，直接用 SSH/SCP 上传。
 
 ### 本地文件和缓存
 
@@ -379,6 +425,37 @@ profile 里的 watchdog 会覆盖这些默认值。当前 SRBMiner profile 使�
 API、轮询 `http://127.0.0.1:${SRB_API_PORT}/api`，并在 API 算力和 share
 计数长时间不更新时重启 SRBMiner。外层 fleet runner 只看 wrapper 输出的日志
 行，所以这套行为可以通过更新 `miners.json` 和 wrapper 脚本改变，不需要重建镜像。
+
+SRBMiner wrapper 退出时会先关闭整个 SRBMiner 进程组，等待
+`SRB_SHUTDOWN_TERM_SECONDS`，再强制结束进程组，最多再等
+`SRB_SHUTDOWN_KILL_SECONDS`。这用于避免切换 profile 时 SRBMiner 退出慢、旧进程残留。
+
+| 变量 | 默认值 | 用法 |
+| --- | --- | --- |
+| `SRB_SHUTDOWN_TERM_SECONDS` | `8` | 发出 TERM 后等待 SRBMiner 正常退出的时间。 |
+| `SRB_SHUTDOWN_KILL_SECONDS` | `4` | 发出 KILL 后最多再等待的时间。 |
+
+当前 `tw-pool` 和 `tw-pool-cuda12` 也使用远程 wrapper。它继续下载原始
+tw-pool miner，但把 `window` 算力作为主 heartbeat 算力，并额外上报 `avg`：
+
+| 变量 | 默认值 | 用法 |
+| --- | --- | --- |
+| `TWPOOL_WRAPPER_URL` | GitHub Raw wrapper | wrapper 脚本 URL；私有 fleet 可改成自己的域名。 |
+| `TWPOOL_MINER_URL` | profile 内设置 | 原始 tw-pool miner tar.gz URL。 |
+| `TWPOOL_LOW_HASH_ENABLED` | `1` | 启用 twpool 相对低算力重启。 |
+| `TWPOOL_LOW_HASH_WARMUP_SECONDS` | `600` | 启动后先等待多久再建立基准。 |
+| `TWPOOL_LOW_HASH_RATIO` | `0.55` | 当前 `window` 低于基准此比例时计为一次低算力样本。 |
+| `TWPOOL_LOW_HASH_BAD_SAMPLES` | `3` | 连续多少个低算力样本后重启 miner。 |
+| `TWPOOL_LOW_HASH_MIN_BASELINE_TH_S` | `50` | 基准低于此值时不触发相对低算力重启，避免低端卡误判。 |
+| `TWPOOL_LOW_HASH_RESTART_COOLDOWN_SECONDS` | `900` | 两次低算力重启之间的最小间隔。 |
+| `TWPOOL_HEARTBEAT_INTERVAL_SECONDS` | `30` | wrapper 扩展 heartbeat 间隔。 |
+
+twpool heartbeat 指标：
+
+- `last_hashrate_th_s` / `last_hashrate`：即时 `window` 算力，用于自动验收和低算力判断。
+- `twpool_window_hashrate_th_s`：同样是 `window` 算力，方便明确字段名读取。
+- `twpool_avg_hashrate_th_s`：tw-pool 日志里的 `avg` 算力，只用于参考和排查。
+- `twpool_low_hash_baseline_th_s`：wrapper 当前记录的相对低算力基准。
 
 ### SSH、ttyd 和 Heartbeat
 
@@ -498,7 +575,7 @@ heartbeat 会包含 worker、平台、profile、GPU、配置版本、算力、ac
 ```bash
 docker run --rm \
   -e MINER_DRY_RUN=1 \
-  -e MINER_WALLET=prl1replace_with_your_wallet \
+  -e MINER_WALLET=YOUR_PRL_WALLET \
   tdklyx/pearl-fleet:v1
 ```
 
@@ -507,7 +584,7 @@ docker run --rm \
 ```bash
 docker run --rm \
   -e MINER_DRY_RUN=1 \
-  -e MINER_WALLET=prl1replace_with_your_wallet \
+  -e MINER_WALLET=YOUR_PRL_WALLET \
   -e PEARL_BOOTSTRAP_URL=https://your-domain.example/bootstrap.env \
   tdklyx/pearl-fleet:v1
 ```
@@ -517,6 +594,8 @@ docker run --rm \
 ```bash
 docker build -f fleet/Dockerfile.nocuda -t tdklyx/pearl-fleet:v1 fleet
 docker build -f fleet/Dockerfile.ubuntu24 -t tdklyx/pearl-fleet:ubuntu24-v1 fleet
+docker build -f fleet/Dockerfile.nocuda -t tdklyx/pearl-fleet:v1.2.0 fleet
+docker build -f fleet/Dockerfile.ubuntu24 -t tdklyx/pearl-fleet:ubuntu24-v2 fleet
 ```
 
 ## 安全说明
@@ -531,6 +610,16 @@ public config URL 对 worker 和平台机主都是可见的。如果你需要私
 单机测试、heartbeat，应该使用自己的 HTTPS VPS/域名。
 
 ## 更新日志
+
+### v1.2.0 / ubuntu24-v2 - 2026-06-09
+
+- 镜像启动时新增网络诊断和修复脚本：修复 `/etc/resolv.conf`，设置 IPv4 优先，
+  并记录 DNS、TCP、HTTPS、Python urllib、curl 诊断日志。
+- 远程配置、`miners.json`、wrapper 脚本和矿工包下载新增 `curl/wget` 兜底；
+  默认 curl 强制 IPv4，减少坏 IPv6 或 Python urllib 超时导致的旧本地 registry 回退。
+- 新增 `fleet-network-fix.sh --install --repair --restart-runner`，用于 SSH 到旧机器后
+  做一次性修复并安装重启持久化。
+- 更新 README 的网络修复变量和旧机器执行方法。
 
 ### v1.1.0 - 2026-06-04
 

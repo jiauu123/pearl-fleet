@@ -10,8 +10,23 @@ WEB_TERMINAL_MAX_CLIENTS="${WEB_TERMINAL_MAX_CLIENTS:-2}"
 HEALTH_SERVER_ENABLED="${HEALTH_SERVER_ENABLED:-1}"
 HEALTH_SERVER_HOST="${HEALTH_SERVER_HOST:-[::]}"
 HEALTH_SERVER_PORT="${HEALTH_SERVER_PORT:-8888}"
+FLEET_NETWORK_FIX_ENABLED="${FLEET_NETWORK_FIX_ENABLED:-1}"
+
+run_network_fix() {
+  if [[ "${FLEET_NETWORK_FIX_ENABLED}" != "1" ]]; then
+    return 0
+  fi
+  if [[ ! -x /usr/local/bin/fleet-network-fix.sh ]]; then
+    echo "[network] fleet-network-fix.sh missing; skipping" >&2
+    return 0
+  fi
+  /usr/local/bin/fleet-network-fix.sh --boot --repair >/tmp/fleet-network-fix.boot.log 2>&1 || {
+    echo "[network] repair failed; continuing, log=/tmp/fleet-network-fix.boot.log" >&2
+  }
+}
 
 if [[ "${MINER_DRY_RUN:-0}" == "1" ]]; then
+  run_network_fix
   exec python3 /usr/local/bin/pearl_fleet_runner.py "$@"
 fi
 
@@ -80,6 +95,7 @@ start_ttyd() {
   echo "[ttyd] listening on ${HEALTH_SERVER_PORT} user=${WEB_TERMINAL_USER}"
 }
 
+run_network_fix
 start_sshd
 start_ttyd
 

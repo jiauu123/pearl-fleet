@@ -13,17 +13,20 @@ download/extraction, a log watchdog, and optional heartbeat reporting.
 Recommended no-CUDA image:
 
 ```text
-tdklyx/pearl-fleet:v1
-ghcr.io/selkk-lab/pearl-fleet:v1
+tdklyx/pearl-fleet:v1.2.0
+ghcr.io/selkk-lab/pearl-fleet:v1.2.0
 ```
 
 Ubuntu 24.04 / glibc 2.39 variant for miners that fail with
 `GLIBC_2.39 not found`:
 
 ```text
-tdklyx/pearl-fleet:ubuntu24-v1
-ghcr.io/selkk-lab/pearl-fleet:ubuntu24-v1
+tdklyx/pearl-fleet:ubuntu24-v2
+ghcr.io/selkk-lab/pearl-fleet:ubuntu24-v2
 ```
+
+Historical tags `v1` and `ubuntu24-v1` do not include the v1.2.0 startup
+network repair.
 
 The image defaults to this public bootstrap:
 
@@ -43,7 +46,7 @@ Set at least a wallet address. The public GitHub config intentionally does not
 contain a wallet.
 
 ```env
-MINER_WALLET=prl1replace_with_your_wallet
+MINER_WALLET=YOUR_PRL_WALLET
 ```
 
 Useful management env:
@@ -88,7 +91,7 @@ Use `8888/tcp` for ttyd.
 Environment:
 
 ```env
-MINER_WALLET=prl1replace_with_your_wallet
+MINER_WALLET=YOUR_PRL_WALLET
 PEARL_BOOTSTRAP_URL=https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/config/bootstrap.env
 FLEET_ACCESS_PASSWORD=change-me
 WEB_TERMINAL_PASSWORD=change-me
@@ -125,13 +128,13 @@ Persistent volume: mount to /workspace if available
 Minimum env:
 
 ```env
-MINER_WALLET=prl1replace_with_your_wallet
+MINER_WALLET=YOUR_PRL_WALLET
 ```
 
 Recommended env:
 
 ```env
-MINER_WALLET=prl1replace_with_your_wallet
+MINER_WALLET=YOUR_PRL_WALLET
 PEARL_BOOTSTRAP_URL=https://your-domain.example/bootstrap.env
 FLEET_ACCESS_PASSWORD=change-me
 WEB_TERMINAL_PASSWORD=change-me
@@ -158,7 +161,7 @@ docker run -d --name pearl-fleet \
   -p 2222:22 \
   -p 8888:8888 \
   -v pearl-fleet-workspace:/workspace \
-  -e MINER_WALLET=prl1replace_with_your_wallet \
+  -e MINER_WALLET=YOUR_PRL_WALLET \
   -e PEARL_BOOTSTRAP_URL=https://your-domain.example/bootstrap.env \
   -e FLEET_ACCESS_PASSWORD=change-me \
   -e WEB_TERMINAL_PASSWORD=change-me \
@@ -215,7 +218,7 @@ Then point workers at the VPS:
 
 ```env
 PEARL_BOOTSTRAP_URL=https://your-domain.example/bootstrap.env
-MINER_WALLET=prl1replace_with_your_wallet
+MINER_WALLET=YOUR_PRL_WALLET
 ```
 
 If you later move VPS, keep the same domain and file paths. DNS can point to
@@ -353,6 +356,53 @@ au.pearl.herominers.com:1200
 | `CONFIG_HASH_CHECK_ENABLED` | `0` | Check optional hash sidecar URL before downloading full files. |
 | `CONFIG_HASH_URL_SUFFIX` | `.sha256` | Suffix appended to config URLs for hash sidecars. |
 | `CONFIG_HTTP_CACHE_BUST` | `0` | Add `_pearl_min` cache-busting query. Usually leave disabled when conditional requests are enabled. |
+| `CONFIG_CURL_FALLBACK_ENABLED` | `1` | Use `curl/wget` when Python `urllib` cannot fetch remote config. |
+| `CONFIG_CURL_IPV4_ONLY` | `1` | Force IPv4 for curl fallback to avoid broken IPv6 paths. |
+| `CONFIG_CURL_RETRIES` | `3` | Retry count for config `curl/wget` fallback. |
+| `CONFIG_CURL_CONNECT_TIMEOUT_SECONDS` | `10` | Connect timeout for `curl/wget` fallback. |
+| `MINER_DOWNLOAD_TIMEOUT_SECONDS` | `180` | Total timeout for miner and wrapper downloads. |
+| `MINER_DOWNLOAD_RETRIES` | `3` | Retry count for miner and wrapper downloads. |
+
+### Network Diagnosis And Repair
+
+New images run this before starting the fleet runner:
+
+```bash
+/usr/local/bin/fleet-network-fix.sh --boot --repair
+```
+
+It diagnoses DNS, TCP, HTTPS, Python urllib, and curl access, then repairs
+`/etc/resolv.conf`, enables IPv4 preference, and writes logs to:
+
+```text
+/var/log/pearl-fleet-network-fix.log
+```
+
+Variables:
+
+| Variable | Default | Use |
+| --- | --- | --- |
+| `FLEET_NETWORK_FIX_ENABLED` | `1` | Run network repair automatically at image startup. |
+| `FLEET_DNS_SERVERS` | `1.1.1.1 8.8.8.8` | DNS servers written to `/etc/resolv.conf`. |
+| `FLEET_DNS_OPTIONS` | `timeout:2 attempts:3 rotate` | Resolver options written to `/etc/resolv.conf`. |
+| `FLEET_NETWORK_CHECK_HOSTS` | common config/GitHub/pool hosts | Hosts checked during diagnosis. |
+| `FLEET_NETWORK_CHECK_URLS` | common config and miner URLs | URLs checked during diagnosis. |
+| `FLEET_HOSTS_FALLBACKS` | empty | Optional `/etc/hosts` fallback in `host=ip host2=ip2` format. Use only when the IP is known. |
+
+For existing machines that cannot switch image but still have SSH, upload the
+script first, then run:
+
+```bash
+chmod 0755 /usr/local/bin/fleet-network-fix.sh
+/usr/local/bin/fleet-network-fix.sh --install --repair --restart-runner
+tail -n 120 /var/log/pearl-fleet-network-fix.log
+```
+
+`--install` installs best-effort boot persistence by patching the Fleet
+entrypoint, writing `/etc/rc.local`, writing
+`/etc/cron.d/pearl-fleet-network-fix`, and creating a systemd oneshot unit when
+systemd is available. If the machine cannot reach your domain, do not fetch this
+script with `curl`; upload it with SSH/SCP.
 
 ### Local Files And Cache
 
@@ -384,6 +434,39 @@ wrapper downloads SRBMiner, starts its local API, polls
 and share counters stay stale. The outer fleet runner only watches wrapper log
 lines, so this behavior can be changed by updating `miners.json` and the wrapper
 script without rebuilding the image.
+
+On shutdown, the SRBMiner wrapper terminates the whole SRBMiner process group,
+waits `SRB_SHUTDOWN_TERM_SECONDS`, then force-kills the process group and waits
+up to `SRB_SHUTDOWN_KILL_SECONDS`. This prevents stale SRBMiner processes from
+surviving profile switches.
+
+| Variable | Default | Use |
+| --- | --- | --- |
+| `SRB_SHUTDOWN_TERM_SECONDS` | `8` | Time to wait after TERM before force kill. |
+| `SRB_SHUTDOWN_KILL_SECONDS` | `4` | Time to wait after KILL before the wrapper exits. |
+
+Current `tw-pool` and `tw-pool-cuda12` profiles also use a remote wrapper. It
+still downloads the original tw-pool miner, but treats `window` hashrate as the
+primary heartbeat hashrate and reports `avg` as an extra metric:
+
+| Variable | Default | Use |
+| --- | --- | --- |
+| `TWPOOL_WRAPPER_URL` | GitHub Raw wrapper | Wrapper script URL; private fleets can point this at their own domain. |
+| `TWPOOL_MINER_URL` | Set by profile | Original tw-pool miner tar.gz URL. |
+| `TWPOOL_LOW_HASH_ENABLED` | `1` | Enable relative low-hashrate restart for twpool. |
+| `TWPOOL_LOW_HASH_WARMUP_SECONDS` | `600` | Wait this long before establishing a baseline. |
+| `TWPOOL_LOW_HASH_RATIO` | `0.55` | Count a bad sample when current `window` is below this ratio of baseline. |
+| `TWPOOL_LOW_HASH_BAD_SAMPLES` | `3` | Restart the miner after this many consecutive bad samples. |
+| `TWPOOL_LOW_HASH_MIN_BASELINE_TH_S` | `50` | Do not use relative restart until baseline reaches this value. |
+| `TWPOOL_LOW_HASH_RESTART_COOLDOWN_SECONDS` | `900` | Minimum interval between low-hashrate restarts. |
+| `TWPOOL_HEARTBEAT_INTERVAL_SECONDS` | `30` | Wrapper extended heartbeat interval. |
+
+twpool heartbeat metrics:
+
+- `last_hashrate_th_s` / `last_hashrate`: current `window` hashrate, used for automated acceptance and low-hashrate decisions.
+- `twpool_window_hashrate_th_s`: the same `window` hashrate under an explicit field name.
+- `twpool_avg_hashrate_th_s`: tw-pool `avg` hashrate, useful for debugging only.
+- `twpool_low_hash_baseline_th_s`: current wrapper baseline for relative low-hashrate checks.
 
 ### Access And Heartbeat
 
@@ -499,7 +582,7 @@ Dry run validates config without starting a miner:
 ```bash
 docker run --rm \
   -e MINER_DRY_RUN=1 \
-  -e MINER_WALLET=prl1replace_with_your_wallet \
+  -e MINER_WALLET=YOUR_PRL_WALLET \
   tdklyx/pearl-fleet:v1
 ```
 
@@ -508,7 +591,7 @@ Use a private VPS config:
 ```bash
 docker run --rm \
   -e MINER_DRY_RUN=1 \
-  -e MINER_WALLET=prl1replace_with_your_wallet \
+  -e MINER_WALLET=YOUR_PRL_WALLET \
   -e PEARL_BOOTSTRAP_URL=https://your-domain.example/bootstrap.env \
   tdklyx/pearl-fleet:v1
 ```
@@ -518,6 +601,8 @@ Build from source:
 ```bash
 docker build -f fleet/Dockerfile.nocuda -t tdklyx/pearl-fleet:v1 fleet
 docker build -f fleet/Dockerfile.ubuntu24 -t tdklyx/pearl-fleet:ubuntu24-v1 fleet
+docker build -f fleet/Dockerfile.nocuda -t tdklyx/pearl-fleet:v1.2.0 fleet
+docker build -f fleet/Dockerfile.ubuntu24 -t tdklyx/pearl-fleet:ubuntu24-v2 fleet
 ```
 
 ## Security Notes
@@ -534,6 +619,19 @@ HTTPS VPS/domain for private rollout control, per-worker overrides, and
 heartbeat.
 
 ## Changelog
+
+### v1.2.0 / ubuntu24-v2 - 2026-06-09
+
+- Added startup network diagnosis and repair: rewrites `/etc/resolv.conf`,
+  enables IPv4 preference, and logs DNS, TCP, HTTPS, Python urllib, and curl
+  checks.
+- Added `curl/wget` fallback for remote config, `miners.json`, wrapper scripts,
+  and miner package downloads. Curl fallback defaults to IPv4 to reduce bad IPv6
+  and Python urllib timeout failures that previously caused stale local registry
+  fallback.
+- Added `fleet-network-fix.sh --install --repair --restart-runner` for existing
+  SSH-accessible machines that cannot switch images.
+- Documented network repair variables and legacy-machine usage.
 
 ### v1.1.0 - 2026-06-04
 

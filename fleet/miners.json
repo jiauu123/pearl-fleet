@@ -28,10 +28,23 @@
       }
     },
     "tw-pool": {
-      "url": "https://github.com/egg5233/tw-pearl-miner/releases/download/v1.4.0/tw-pearl-miner-linux.tar.gz",
-      "archive": "tar.gz",
-      "binary": "pearl-gpu-miner",
+      "url": "${TWPOOL_WRAPPER_URL}",
+      "archive": "file",
+      "binary": "twpool-lowhash-wrapper.py",
+      "env": {
+        "TWPOOL_WRAPPER_URL": "https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/scripts/twpool-lowhash-wrapper.py?v=20260608-urlarg1",
+        "TWPOOL_MINER_URL": "https://github.com/egg5233/tw-pearl-miner/releases/download/v1.9.0/tw-pearl-miner-1.9.0-cuda12.tar.gz",
+        "TWPOOL_LOW_HASH_ENABLED": "1",
+        "TWPOOL_LOW_HASH_WARMUP_SECONDS": "600",
+        "TWPOOL_LOW_HASH_RATIO": "0.55",
+        "TWPOOL_LOW_HASH_BAD_SAMPLES": "3",
+        "TWPOOL_LOW_HASH_MIN_BASELINE_TH_S": "50",
+        "TWPOOL_LOW_HASH_RESTART_COOLDOWN_SECONDS": "900",
+        "TWPOOL_HEARTBEAT_INTERVAL_SECONDS": "30"
+      },
       "args": [
+        "--twpool-miner-url", "${TWPOOL_MINER_URL}",
+        "--",
         "--wallet", "${MINER_WALLET}",
         "--worker", "${WORKER_NAME}"
       ],
@@ -40,6 +53,11 @@
         "warmup_seconds": 90,
         "stale_seconds": 240,
         "hashrate_regexes": [
+          {
+            "regex": "([0-9]+(?:[.][0-9]+)?)\\s*([KMGT]?H/s)\\s+window",
+            "value_group": 1,
+            "unit_group": 2
+          },
           {
             "regex": "([0-9]+(?:[.][0-9]+)?)\\s*([KMGT]?H/s)\\s+avg",
             "value_group": 1,
@@ -51,10 +69,23 @@
       }
     },
     "tw-pool-cuda12": {
-      "url": "https://github.com/egg5233/tw-pearl-miner/releases/download/v1.4.0/tw-pearl-miner-1.4.0-cuda12.tar.gz",
-      "archive": "tar.gz",
-      "binary": "pearl-gpu-miner",
+      "url": "${TWPOOL_WRAPPER_URL}",
+      "archive": "file",
+      "binary": "twpool-lowhash-wrapper.py",
+      "env": {
+        "TWPOOL_WRAPPER_URL": "https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/scripts/twpool-lowhash-wrapper.py?v=20260608-urlarg1",
+        "TWPOOL_MINER_URL": "https://github.com/egg5233/tw-pearl-miner/releases/download/v1.9.0/tw-pearl-miner-1.9.0-cuda12.tar.gz",
+        "TWPOOL_LOW_HASH_ENABLED": "1",
+        "TWPOOL_LOW_HASH_WARMUP_SECONDS": "600",
+        "TWPOOL_LOW_HASH_RATIO": "0.55",
+        "TWPOOL_LOW_HASH_BAD_SAMPLES": "3",
+        "TWPOOL_LOW_HASH_MIN_BASELINE_TH_S": "50",
+        "TWPOOL_LOW_HASH_RESTART_COOLDOWN_SECONDS": "900",
+        "TWPOOL_HEARTBEAT_INTERVAL_SECONDS": "30"
+      },
       "args": [
+        "--twpool-miner-url", "${TWPOOL_MINER_URL}",
+        "--",
         "--wallet", "${MINER_WALLET}",
         "--worker", "${WORKER_NAME}"
       ],
@@ -63,6 +94,11 @@
         "warmup_seconds": 90,
         "stale_seconds": 240,
         "hashrate_regexes": [
+          {
+            "regex": "([0-9]+(?:[.][0-9]+)?)\\s*([KMGT]?H/s)\\s+window",
+            "value_group": 1,
+            "unit_group": 2
+          },
           {
             "regex": "([0-9]+(?:[.][0-9]+)?)\\s*([KMGT]?H/s)\\s+avg",
             "value_group": 1,
@@ -133,17 +169,19 @@
       }
     },
     "srbminer": {
-      "url": "${SRB_WRAPPER_URL:-https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/scripts/srbminer-api-wrapper.sh}?v=20260604-api1",
+      "url": "${SRB_WRAPPER_URL:-https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/scripts/srbminer-api-wrapper.sh}?v=20260608-srb335-stop1",
       "archive": "file",
       "binary": "srbminer-api-wrapper.sh",
       "env": {
         "MINER_POOL_URL": "pearl-eu2.luckypool.io:3360",
         "SRB_API_PORT": "21550",
-        "SRBMINER_URL": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.3/SRBMiner-Multi-3-3-3-Linux.tar.gz",
+        "SRBMINER_URL": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.5/SRBMiner-Multi-3-3-5-Linux.tar.gz",
         "SRB_WATCHDOG_WARMUP_SECONDS": "180",
         "SRB_WATCHDOG_STALE_SECONDS": "420",
         "SRB_WATCHDOG_CHECK_INTERVAL": "30",
-        "SRB_WATCHDOG_MIN_HASHRATE_TH_S": "0.1"
+        "SRB_WATCHDOG_MIN_HASHRATE_TH_S": "0.1",
+        "SRB_SHUTDOWN_TERM_SECONDS": "8",
+        "SRB_SHUTDOWN_KILL_SECONDS": "4"
       },
       "args": [
         "--algorithm", "pearlhash",
@@ -184,17 +222,19 @@
       }
     },
     "srbminer-herominers": {
-      "url": "${SRB_WRAPPER_URL:-https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/scripts/srbminer-api-wrapper.sh}?v=20260604-api1",
+      "url": "${SRB_WRAPPER_URL:-https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/scripts/srbminer-api-wrapper.sh}?v=20260608-srb335-stop1",
       "archive": "file",
       "binary": "srbminer-api-wrapper.sh",
       "env": {
         "MINER_POOL_URL": "de.pearl.herominers.com:1200",
         "SRB_API_PORT": "21550",
-        "SRBMINER_URL": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.3/SRBMiner-Multi-3-3-3-Linux.tar.gz",
+        "SRBMINER_URL": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.5/SRBMiner-Multi-3-3-5-Linux.tar.gz",
         "SRB_WATCHDOG_WARMUP_SECONDS": "180",
         "SRB_WATCHDOG_STALE_SECONDS": "420",
         "SRB_WATCHDOG_CHECK_INTERVAL": "30",
-        "SRB_WATCHDOG_MIN_HASHRATE_TH_S": "0.1"
+        "SRB_WATCHDOG_MIN_HASHRATE_TH_S": "0.1",
+        "SRB_SHUTDOWN_TERM_SECONDS": "8",
+        "SRB_SHUTDOWN_KILL_SECONDS": "4"
       },
       "args": [
         "--algorithm", "pearlhash",

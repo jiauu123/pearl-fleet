@@ -50,6 +50,30 @@ def load_json(path, default):
         return default
 
 
+def merge_payload(existing, incoming):
+    if not isinstance(existing, dict):
+        return incoming
+    if not isinstance(incoming, dict):
+        return existing
+
+    merged = dict(existing)
+    same_profile = existing.get("profile") == incoming.get("profile")
+    for key, value in incoming.items():
+        if key in {"metrics", "identity", "cost"} and isinstance(value, dict):
+            if key == "metrics" and not same_profile:
+                merged[key] = value
+                continue
+            base = merged.get(key) if isinstance(merged.get(key), dict) else {}
+            new_value = dict(base)
+            new_value.update(value)
+            merged[key] = new_value
+            continue
+        if value in ("", None) and key in merged:
+            continue
+        merged[key] = value
+    return merged
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "PearlFleetHeartbeat/1.0"
 
@@ -122,6 +146,8 @@ class Handler(BaseHTTPRequestHandler):
         root = DATA_DIR / "heartbeats"
         latest_path = root / "latest.json"
         latest = load_json(latest_path, {})
+        existing = latest.get(worker)
+        data = merge_payload(existing, data)
         latest[worker] = data
 
         write_json_atomic(root / "workers" / f"{worker}.json", data)

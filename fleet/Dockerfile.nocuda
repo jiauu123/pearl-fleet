@@ -35,11 +35,16 @@ RUN apt-get update \
 WORKDIR /app
 COPY pearl_fleet_runner.py /usr/local/bin/pearl_fleet_runner.py
 COPY fleet_entrypoint.sh /usr/local/bin/fleet_entrypoint.sh
+COPY scripts/fleet-network-fix.sh /usr/local/bin/fleet-network-fix.sh
 COPY miners.json /app/miners.json
 COPY platforms.json /app/platforms.json
-RUN chmod 0755 /usr/local/bin/pearl_fleet_runner.py /usr/local/bin/fleet_entrypoint.sh
+RUN chmod 0755 \
+        /usr/local/bin/pearl_fleet_runner.py \
+        /usr/local/bin/fleet_entrypoint.sh \
+        /usr/local/bin/fleet-network-fix.sh
 
 ENV PEARL_BOOTSTRAP_URL="https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/config/bootstrap.env" \
+    FLEET_NETWORK_FIX_ENABLED="1" \
     NVIDIA_VISIBLE_DEVICES="all" \
     NVIDIA_DRIVER_CAPABILITIES="compute,utility"
 

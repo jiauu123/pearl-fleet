@@ -37,6 +37,12 @@ DEFAULTS = {
     "CONFIG_HTTP_CACHE_BUST": "0",
     "CONFIG_HASH_CHECK_ENABLED": "0",
     "CONFIG_HASH_URL_SUFFIX": ".sha256",
+    "CONFIG_CURL_FALLBACK_ENABLED": "1",
+    "CONFIG_CURL_IPV4_ONLY": "1",
+    "CONFIG_CURL_RETRIES": "3",
+    "CONFIG_CURL_CONNECT_TIMEOUT_SECONDS": "10",
+    "MINER_DOWNLOAD_TIMEOUT_SECONDS": "180",
+    "MINER_DOWNLOAD_RETRIES": "3",
     "WATCHDOG_ENABLED": "1",
     "WATCHDOG_CHECK_INTERVAL": "30",
     "WATCHDOG_STARTUP_GRACE": "180",
@@ -170,6 +176,27 @@ def sha256_text(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def save_text_cache(cache, meta, url, text, headers=None):
+    if not cache:
+        return
+    headers = headers or {}
+    digest = sha256_text(text)
+    if cache.is_file() and digest == meta.get("sha256"):
+        log(f"[config] unchanged by content sha256 {url}")
+    else:
+        cache.write_text(text, encoding="utf-8")
+    write_cache_meta(
+        cache,
+        {
+            "url": url,
+            "etag": headers.get("ETag", "") if hasattr(headers, "get") else "",
+            "last_modified": headers.get("Last-Modified", "") if hasattr(headers, "get") else "",
+            "sha256": digest,
+            "checked_at": int(time.time()),
+        },
+    )
+
+
 def parse_sha256_text(text):
     match = re.search(r"\b([a-fA-F0-9]{64})\b", text or "")
     return match.group(1).lower() if match else ""
@@ -211,6 +238,68 @@ def safe_cache_name(prefix, url, suffix):
     return f"{prefix}-{hostish}-{digest}.{suffix}"
 
 
+def run_fetch_tool(cmd, timeout):
+    try:
+        return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout + 10, check=False)
+    except Exception as exc:
+        warn(f"[download] tool failed {' '.join(cmd[:2])}: {exc}")
+        return None
+
+
+def fetch_text_with_cli(url, timeout=20, identity=None, cfg=None):
+    cfg = cfg or {}
+    if not truthy(cfg.get("CONFIG_CURL_FALLBACK_ENABLED", DEFAULTS["CONFIG_CURL_FALLBACK_ENABLED"])):
+        return None
+    req_url = request_url(url, cfg, identity)
+    retries = str(int_config(cfg, "CONFIG_CURL_RETRIES", 3))
+    connect_timeout = str(int_config(cfg, "CONFIG_CURL_CONNECT_TIMEOUT_SECONDS", 10))
+    if shutil.which("curl"):
+        cmd = [
+            "curl",
+            "--http1.1",
+            "-fsSL",
+            "--retry",
+            retries,
+            "--retry-delay",
+            "2",
+            "--connect-timeout",
+            connect_timeout,
+            "--max-time",
+            str(timeout),
+            "-A",
+            "pearl-fleet-runner/1",
+            "-H",
+            "Cache-Control: no-cache",
+            req_url,
+        ]
+        if truthy(cfg.get("CONFIG_CURL_IPV4_ONLY", DEFAULTS["CONFIG_CURL_IPV4_ONLY"])):
+            cmd.insert(1, "-4")
+        proc = run_fetch_tool(cmd, timeout)
+        if proc and proc.returncode == 0:
+            return proc.stdout.decode("utf-8", errors="replace")
+        if proc:
+            warn(f"[config] curl fallback failed {url}: {proc.stderr.decode('utf-8', errors='replace').strip()[:300]}")
+    if shutil.which("wget"):
+        cmd = [
+            "wget",
+            "-q",
+            "-O",
+            "-",
+            "--tries",
+            retries,
+            "--timeout",
+            connect_timeout,
+            "--user-agent=pearl-fleet-runner/1",
+            req_url,
+        ]
+        proc = run_fetch_tool(cmd, timeout)
+        if proc and proc.returncode == 0:
+            return proc.stdout.decode("utf-8", errors="replace")
+        if proc:
+            warn(f"[config] wget fallback failed {url}: {proc.stderr.decode('utf-8', errors='replace').strip()[:300]}")
+    return None
+
+
 def fetch_text(url, timeout=20, identity=None, cfg=None, cache=None):
     cfg = cfg or {}
     cache = Path(cache) if cache else None
@@ -234,22 +323,7 @@ def fetch_text(url, timeout=20, identity=None, cfg=None, cache=None):
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             text = resp.read().decode("utf-8", errors="replace")
-            if cache:
-                digest = sha256_text(text)
-                if cache.is_file() and digest == meta.get("sha256"):
-                    log(f"[config] unchanged by content sha256 {url}")
-                else:
-                    cache.write_text(text, encoding="utf-8")
-                write_cache_meta(
-                    cache,
-                    {
-                        "url": url,
-                        "etag": resp.headers.get("ETag", ""),
-                        "last_modified": resp.headers.get("Last-Modified", ""),
-                        "sha256": digest,
-                        "checked_at": int(time.time()),
-                    },
-                )
+            save_text_cache(cache, meta, url, text, resp.headers)
             return text
     except urllib.error.HTTPError as exc:
         if exc.code == 304 and cache and cache.is_file():
@@ -257,6 +331,19 @@ def fetch_text(url, timeout=20, identity=None, cfg=None, cache=None):
             meta["checked_at"] = int(time.time())
             write_cache_meta(cache, meta)
             return cache.read_text(encoding="utf-8", errors="replace")
+        text = fetch_text_with_cli(url, timeout=timeout, identity=identity, cfg=cfg)
+        if text is not None:
+            log(f"[config] fetched by curl/wget fallback {url}")
+            save_text_cache(cache, meta, url, text)
+            return text
+        raise
+    except Exception as exc:
+        warn(f"[config] urllib fetch failed {url}: {exc}")
+        text = fetch_text_with_cli(url, timeout=timeout, identity=identity, cfg=cfg)
+        if text is not None:
+            log(f"[config] fetched by curl/wget fallback {url}")
+            save_text_cache(cache, meta, url, text)
+            return text
         raise
 
 
@@ -501,12 +588,72 @@ def url_hash(url):
     return hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
 
 
+def download_file_with_cli(url, output, timeout=180, user_agent="pearl-fleet-runner/1", cfg=None):
+    cfg = cfg or {}
+    retries = str(int_config(cfg, "MINER_DOWNLOAD_RETRIES", 3))
+    connect_timeout = str(int_config(cfg, "CONFIG_CURL_CONNECT_TIMEOUT_SECONDS", 10))
+    if output.exists():
+        output.unlink()
+    if shutil.which("curl"):
+        cmd = [
+            "curl",
+            "--http1.1",
+            "-fL",
+            "--retry",
+            retries,
+            "--retry-delay",
+            "2",
+            "--connect-timeout",
+            connect_timeout,
+            "--max-time",
+            str(timeout),
+            "-A",
+            user_agent,
+            "-o",
+            str(output),
+            url,
+        ]
+        if truthy(cfg.get("CONFIG_CURL_IPV4_ONLY", DEFAULTS["CONFIG_CURL_IPV4_ONLY"])):
+            cmd.insert(1, "-4")
+        proc = run_fetch_tool(cmd, timeout)
+        if proc and proc.returncode == 0 and output.is_file() and output.stat().st_size > 0:
+            return True
+        if proc:
+            warn(f"[download] curl failed {url}: {proc.stderr.decode('utf-8', errors='replace').strip()[:300]}")
+    if shutil.which("wget"):
+        cmd = [
+            "wget",
+            "-q",
+            "--tries",
+            retries,
+            "--timeout",
+            connect_timeout,
+            "--user-agent",
+            user_agent,
+            "-O",
+            str(output),
+            url,
+        ]
+        proc = run_fetch_tool(cmd, timeout)
+        if proc and proc.returncode == 0 and output.is_file() and output.stat().st_size > 0:
+            return True
+        if proc:
+            warn(f"[download] wget failed {url}: {proc.stderr.decode('utf-8', errors='replace').strip()[:300]}")
+    return False
+
+
 def download_binary(url, output):
     output.parent.mkdir(parents=True, exist_ok=True)
     tmp = output.with_suffix(output.suffix + ".tmp")
     req = urllib.request.Request(url, headers={"User-Agent": "pearl-fleet-runner/1"})
-    with urllib.request.urlopen(req, timeout=120) as resp, tmp.open("wb") as fh:
-        shutil.copyfileobj(resp, fh)
+    timeout = int_config(DEFAULTS | nonempty_env(), "MINER_DOWNLOAD_TIMEOUT_SECONDS", 180)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp, tmp.open("wb") as fh:
+            shutil.copyfileobj(resp, fh)
+    except Exception as exc:
+        warn(f"[download] urllib failed {url}: {exc}")
+        if not download_file_with_cli(url, tmp, timeout=timeout):
+            raise
     tmp.replace(output)
     output.chmod(0o755)
 
@@ -611,7 +758,8 @@ def load_registry(cfg, identity):
 
 def early_override_env():
     result = {}
-    for path in DEFAULTS["FLEET_OVERRIDE_FILES"].split():
+    paths_text = os.environ.get("FLEET_OVERRIDE_FILES", DEFAULTS["FLEET_OVERRIDE_FILES"])
+    for path in str(paths_text or "").split():
         result = merge(result, parse_env_file(path))
     return result
 

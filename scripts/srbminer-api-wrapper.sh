@@ -1,7 +1,7 @@
 #!/bin/sh
 set -u
 
-SRBMINER_URL="${SRBMINER_URL:-https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.3/SRBMiner-Multi-3-3-3-Linux.tar.gz}"
+SRBMINER_URL="${SRBMINER_URL:-https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.5/SRBMiner-Multi-3-3-5-Linux.tar.gz}"
 SRB_API_PORT="${SRB_API_PORT:-21550}"
 SRB_API_URL="${SRB_API_URL:-http://127.0.0.1:${SRB_API_PORT}/api}"
 SRB_WATCHDOG_WARMUP_SECONDS="${SRB_WATCHDOG_WARMUP_SECONDS:-180}"
@@ -10,11 +10,14 @@ SRB_WATCHDOG_CHECK_INTERVAL="${SRB_WATCHDOG_CHECK_INTERVAL:-30}"
 SRB_WATCHDOG_API_TIMEOUT_SECONDS="${SRB_WATCHDOG_API_TIMEOUT_SECONDS:-5}"
 SRB_WATCHDOG_MIN_HASHRATE_TH_S="${SRB_WATCHDOG_MIN_HASHRATE_TH_S:-0.1}"
 SRB_WATCHDOG_RESTART_DELAY="${SRB_WATCHDOG_RESTART_DELAY:-10}"
+SRB_SHUTDOWN_TERM_SECONDS="${SRB_SHUTDOWN_TERM_SECONDS:-8}"
+SRB_SHUTDOWN_KILL_SECONDS="${SRB_SHUTDOWN_KILL_SECONDS:-4}"
 
 CACHE_BASE="${MINER_CACHE_DIR:-/app/miners}"
-SRBMINER_DIR="${SRBMINER_DIR:-$CACHE_BASE/srbminer-3.3.3}"
+SRBMINER_DIR="${SRBMINER_DIR:-$CACHE_BASE/srbminer-3.3.5}"
 SRBMINER_BIN="$SRBMINER_DIR/SRBMiner-MULTI"
 child_pid=""
+child_pgid=""
 
 log() {
   printf '%s %s\n' "[$(date -Iseconds)]" "$*"
@@ -23,18 +26,49 @@ log() {
 download_file() {
   url="$1"
   out="$2"
-  python3 - "$url" "$out" <<'PY'
+  if python3 - "$url" "$out" <<'PY'
 import shutil
 import sys
+import os
 import urllib.request
 
 url, out = sys.argv[1], sys.argv[2]
+timeout = int(os.environ.get("MINER_DOWNLOAD_TIMEOUT_SECONDS", "180"))
 req = urllib.request.Request(url, headers={"User-Agent": "pearl-fleet-srb-wrapper/1"})
-with urllib.request.urlopen(req, timeout=180) as resp, open(out + ".tmp", "wb") as fh:
+with urllib.request.urlopen(req, timeout=timeout) as resp, open(out + ".tmp", "wb") as fh:
     shutil.copyfileobj(resp, fh)
-import os
 os.replace(out + ".tmp", out)
 PY
+  then
+    return 0
+  fi
+  log "[srb-wrapper] python download failed, trying curl/wget: $url"
+  rm -f "$out.tmp"
+  if command -v curl >/dev/null 2>&1; then
+    curl_ipv4_flag=""
+    if [ "${CONFIG_CURL_IPV4_ONLY:-1}" = "1" ]; then
+      curl_ipv4_flag="-4"
+    fi
+    if curl $curl_ipv4_flag --http1.1 -fL --retry "${MINER_DOWNLOAD_RETRIES:-3}" --retry-delay 2 \
+      --connect-timeout "${CONFIG_CURL_CONNECT_TIMEOUT_SECONDS:-10}" \
+      --max-time "${MINER_DOWNLOAD_TIMEOUT_SECONDS:-180}" \
+      -A "pearl-fleet-srb-wrapper/1" \
+      -o "$out.tmp" "$url" && [ -s "$out.tmp" ]; then
+      mv "$out.tmp" "$out"
+      return 0
+    fi
+  fi
+  rm -f "$out.tmp"
+  if command -v wget >/dev/null 2>&1; then
+    if wget -q --tries="${MINER_DOWNLOAD_RETRIES:-3}" \
+      --timeout="${CONFIG_CURL_CONNECT_TIMEOUT_SECONDS:-10}" \
+      --user-agent="pearl-fleet-srb-wrapper/1" \
+      -O "$out.tmp" "$url" && [ -s "$out.tmp" ]; then
+      mv "$out.tmp" "$out"
+      return 0
+    fi
+  fi
+  return 1
 }
 
 extract_archive() {
@@ -106,11 +140,39 @@ PY
 }
 
 stop_child() {
-  if [ -n "$child_pid" ] && kill -0 "$child_pid" 2>/dev/null; then
+  if [ -z "$child_pid" ]; then
+    return 0
+  fi
+  if [ -n "$child_pgid" ]; then
+    kill -TERM "-$child_pgid" 2>/dev/null || true
+  else
     kill "$child_pid" 2>/dev/null || true
-    sleep 3
+  fi
+
+  deadline="$(( $(date +%s) + SRB_SHUTDOWN_TERM_SECONDS ))"
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if ! kill -0 "$child_pid" 2>/dev/null; then
+      break
+    fi
+    sleep 1
+  done
+
+  if [ -n "$child_pgid" ]; then
+    kill -KILL "-$child_pgid" 2>/dev/null || true
+  else
     kill -9 "$child_pid" 2>/dev/null || true
   fi
+
+  deadline="$(( $(date +%s) + SRB_SHUTDOWN_KILL_SECONDS ))"
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if ! kill -0 "$child_pid" 2>/dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  wait "$child_pid" 2>/dev/null || true
+  child_pid=""
+  child_pgid=""
 }
 
 on_signal() {
@@ -122,9 +184,23 @@ trap on_signal INT TERM
 
 start_child() {
   ensure_srbminer || return 1
-  "$SRBMINER_BIN" "$@" &
+  if command -v setsid >/dev/null 2>&1; then
+    setsid "$SRBMINER_BIN" "$@" &
+    child_pgid="$!"
+  else
+    "$SRBMINER_BIN" "$@" &
+    child_pgid=""
+  fi
   child_pid="$!"
-  log "[srb-wrapper] started pid=$child_pid api=$SRB_API_URL"
+  log "[srb-wrapper] started pid=$child_pid pgid=${child_pgid:-direct} api=$SRB_API_URL"
+}
+
+interruptible_sleep() {
+  remaining="$1"
+  while [ "$remaining" -gt 0 ]; do
+    sleep 1
+    remaining="$((remaining - 1))"
+  done
 }
 
 monitor_child() {
@@ -134,7 +210,7 @@ monitor_child() {
   last_rejected="-1"
 
   while kill -0 "$child_pid" 2>/dev/null; do
-    sleep "$SRB_WATCHDOG_CHECK_INTERVAL"
+    interruptible_sleep "$SRB_WATCHDOG_CHECK_INTERVAL"
     now="$(date +%s)"
     if api_line="$(read_api "$last_accepted" "$last_rejected" 2>&1)"; then
       set -- $api_line
@@ -150,7 +226,7 @@ monitor_child() {
         last_activity="$now"
       fi
     else
-      log "[srb-api] failed: $api_line"
+      log "[srb-api] api_error: $api_line"
     fi
 
     age="$((now - last_activity))"
