@@ -1,7 +1,7 @@
 #!/bin/sh
 set -u
 
-SRBMINER_URL="${SRBMINER_URL:-https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.5/SRBMiner-Multi-3-3-5-Linux.tar.gz}"
+SRBMINER_URL="${SRBMINER_URL:-https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.7/SRBMiner-Multi-3-3-7-Linux.tar.gz}"
 SRB_API_PORT="${SRB_API_PORT:-21550}"
 SRB_API_URL="${SRB_API_URL:-http://127.0.0.1:${SRB_API_PORT}/api}"
 SRB_WATCHDOG_WARMUP_SECONDS="${SRB_WATCHDOG_WARMUP_SECONDS:-180}"
