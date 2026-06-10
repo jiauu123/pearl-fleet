@@ -175,7 +175,7 @@
       "env": {
         "MINER_POOL_URL": "pearl-eu2.luckypool.io:3360",
         "SRB_API_PORT": "21550",
-        "SRBMINER_URL": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.5/SRBMiner-Multi-3-3-5-Linux.tar.gz",
+        "SRBMINER_URL": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.7/SRBMiner-Multi-3-3-7-Linux.tar.gz",
         "SRB_WATCHDOG_WARMUP_SECONDS": "180",
         "SRB_WATCHDOG_STALE_SECONDS": "420",
         "SRB_WATCHDOG_CHECK_INTERVAL": "30",
@@ -228,7 +228,7 @@
       "env": {
         "MINER_POOL_URL": "de.pearl.herominers.com:1200",
         "SRB_API_PORT": "21550",
-        "SRBMINER_URL": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.5/SRBMiner-Multi-3-3-5-Linux.tar.gz",
+        "SRBMINER_URL": "https://github.com/doktor83/SRBMiner-Multi/releases/download/3.3.7/SRBMiner-Multi-3-3-7-Linux.tar.gz",
         "SRB_WATCHDOG_WARMUP_SECONDS": "180",
         "SRB_WATCHDOG_STALE_SECONDS": "420",
         "SRB_WATCHDOG_CHECK_INTERVAL": "30",
