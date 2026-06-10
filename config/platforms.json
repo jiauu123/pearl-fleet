@@ -99,7 +99,7 @@
         "SALAD_PROJECT_NAME"
       ],
       "worker_prefix": "salad",
-      "worker_template": "${WORKER_PREFIX}-${GPU_MODEL}-${MACHINE_ID}",
+      "worker_template": "${GPU_MODEL}-${MACHINE_ID}",
       "actions": {
         "low_hashrate": {
           "type": "salad_reallocate",
