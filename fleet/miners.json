@@ -169,7 +169,7 @@
       }
     },
     "srbminer": {
-      "url": "${SRB_WRAPPER_URL:-https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/scripts/srbminer-api-wrapper.sh}?v=20260608-srb335-stop1",
+      "url": "${SRB_WRAPPER_URL:-https://raw.githubusercontent.com/jiauu123/pearl-fleet/main/scripts/srbminer-api-wrapper.sh}?v=20260608-srb335-stop1",
       "archive": "file",
       "binary": "srbminer-api-wrapper.sh",
       "env": {
@@ -222,7 +222,7 @@
       }
     },
     "srbminer-herominers": {
-      "url": "${SRB_WRAPPER_URL:-https://raw.githubusercontent.com/selkk-lab/pearl-fleet/main/scripts/srbminer-api-wrapper.sh}?v=20260608-srb335-stop1",
+      "url": "${SRB_WRAPPER_URL:-https://raw.githubusercontent.com/jiauu123/pearl-fleet/main/scripts/srbminer-api-wrapper.sh}?v=20260608-srb335-stop1",
       "archive": "file",
       "binary": "srbminer-api-wrapper.sh",
       "env": {
