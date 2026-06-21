@@ -2,15 +2,15 @@
   "schema_version": 1,
   "profiles": {
     "pearlpool": {
-      "url": "https://pearlhash.xyz/downloads/pearl-miner-v12",
+      "url": "https://github.com/pearlfortune/pearl-miner/releases/download/v1.1.7/pearlfortune-v1.1.7.tar.gz",
       "archive": "file",
-      "binary": "pearl-miner",
+      "binary": "pearlfortune",
       "env": {
-        "PEARLHASH_POOL_HOST": "84.32.220.219:9000"
+        "PEARLHASH_POOL_HOST": "3.37.223.236:10300"
       },
       "args": [
-        "--host", "${PEARLHASH_POOL_HOST}",
-        "--user", "${MINER_WALLET}",
+        "--proxy", "${PEARLHASH_POOL_HOST}",
+        "--address", "${MINER_WALLET}",
         "--worker", "${WORKER_NAME}"
       ],
       "watchdog": {
@@ -19,7 +19,7 @@
         "stale_seconds": 240,
         "hashrate_regexes": [
           {
-            "regex": "Hashrate\\s+Total\\s*=\\s*([0-9]+(?:[.][0-9]+)?)\\s*([KMGT]?H/s)",
+            "regex": "prof_per_sec=\"([0-9]+(?:\\.[0-9]+)?)\\s*([KMGT]?/s|[KMGT]H/s)\"",
             "value_group": 1,
             "unit_group": 2
           }
