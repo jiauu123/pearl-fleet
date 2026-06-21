@@ -19,7 +19,7 @@
         "stale_seconds": 240,
         "hashrate_regexes": [
           {
-            "regex": "prof_per_sec=\"([0-9]+(?:\\.[0-9]+)?)\\s*([KMGT]?/s|[KMGT]H/s)\"",
+            "regex": "proof_per_sec=\"([0-9]+(?:\\.[0-9]+)?)\\s*([KMGT]?/s|[KMGT]H/s)\"",
             "value_group": 1,
             "unit_group": 2
           }
