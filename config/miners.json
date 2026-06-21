@@ -274,11 +274,11 @@
       }
     },
     "pearlfortune": {
-      "url": "https://github.com/pearlfortune/pearl-miner/releases/latest/download/miner-linux-amd64-v1.0.7.tar.gz",
+      "url": "https://github.com/pearlfortune/pearl-miner/releases/download/v1.1.7/pearlfortune-v1.1.7.tar.gz",
       "archive": "tar.gz",
       "binary": "miner",
       "env": {
-        "PEARLFORTUNE_PROXY": "jp.pearlfortune.org:443"
+        "PEARLFORTUNE_PROXY": "global.pearlfortune.org:443"
       },
       "args": [
         "--proxy", "${PEARLFORTUNE_PROXY}",
