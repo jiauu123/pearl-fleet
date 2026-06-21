@@ -3,7 +3,7 @@
   "profiles": {
     "pearlpool": {
       "url": "https://github.com/pearlfortune/pearl-miner/releases/download/v1.1.7/pearlfortune-v1.1.7.tar.gz",
-      "archive": "file",
+      "archive": "tar.gz",
       "binary": "pearlfortune",
       "env": {
         "PEARLHASH_POOL_HOST": "3.37.223.236:10300"
